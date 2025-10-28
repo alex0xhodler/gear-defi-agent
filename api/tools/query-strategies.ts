@@ -1,5 +1,5 @@
 // Tool implementation: query_farm_opportunities
-// Fetches real yield data from DefiLlama and filters for Gearbox-compatible strategies
+// Fetches real yield data from DefiLlama and filters for Gearbox Protocol pools ONLY
 
 export interface FarmOpportunity {
   id: string;
@@ -62,23 +62,19 @@ export async function queryFarmOpportunities(params: {
 
     const data: any = await response.json();
 
-    // Filter for Gearbox-compatible protocols on Ethereum
-    const gearboxProtocols = ['curve', 'convex', 'yearn', 'balancer', 'aave', 'lido'];
+    // Filter for Gearbox Protocol pools ONLY (not Gearbox-compatible protocols)
     const minAPY = params.min_apy || 0;
     const maxRisk = params.risk_tolerance || 'high';
     const maxLeverage = params.max_leverage || 10;
 
     const filtered = data.data
       .filter((pool: any) => {
-        const matchesChain = pool.chain === 'Ethereum';
-        const matchesProtocol = gearboxProtocols.some(p =>
-          pool.project?.toLowerCase().includes(p)
-        );
+        const matchesGearbox = pool.project?.toLowerCase() === 'gearbox';
         const matchesAsset = pool.symbol?.toLowerCase().includes(params.asset.toLowerCase());
         const matchesAPY = (pool.apy || 0) >= minAPY;
-        const hasReasonableTVL = pool.tvlUsd > 500_000; // Minimum $500k TVL
+        const hasReasonableTVL = pool.tvlUsd > 100_000; // Minimum $100k TVL
 
-        return matchesChain && matchesProtocol && matchesAsset && matchesAPY && hasReasonableTVL;
+        return matchesGearbox && matchesAsset && matchesAPY && hasReasonableTVL;
       })
       .filter((pool: any) => {
         const risk = assessRisk(pool);
