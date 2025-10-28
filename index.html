@@ -15,8 +15,16 @@
     <!-- Babel Standalone -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+    <!-- Wagmi & RainbowKit -->
+    <script src="https://cdn.jsdelivr.net/npm/viem@2.x/dist/viem.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@wagmi/core@2.x/dist/wagmi-core.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@wagmi/connectors@5.x/dist/wagmi-connectors.umd.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@rainbow-me/rainbowkit@2.2.9/dist/index.css" />
+    <script src="https://unpkg.com/@rainbow-me/rainbowkit@2.2.9/dist/index.umd.js"></script>
+
     <!-- API Client -->
     <script src="/api-client.js"></script>
+    <script src="/web3-config.js"></script>
 
     <style>
         body {
@@ -132,15 +140,34 @@
            Chat-first onboarding
            ----------------------------*/
         function ChatPanel(){
-          const { createMandateFromIntent, templates, setProposals } = useApp();
+          const { createMandateFromIntent, templates, setProposals, walletAddress, connectWallet } = useApp();
           const [messages, setMessages] = useState([
-            { id: uid('m'), from: 'agent', text: "Hi — I'm your Gearbox yield optimizer powered by AI. Tell me what you'd like to do!" }
+            { id: uid('m'), from: 'agent', text: "Hi — I'm your Gearbox yield optimizer powered by AI. Connect your wallet and tell me what you'd like to do!" }
           ]);
           const [input, setInput] = useState('');
           const [isLoading, setIsLoading] = useState(false);
           const [apiClient] = useState(() => new window.GearboxAPIClient());
 
-          const quickReplies = [
+          const quickReplies = walletAddress ? [
+            {
+              icon: "👛",
+              label: "My Wallet",
+              description: "Analyze holdings",
+              text: `Analyze my wallet ${walletAddress}`
+            },
+            {
+              icon: "💰",
+              label: "Stablecoins",
+              description: "Earn with idle USDC/USDT",
+              text: "Find me the best USDC farming opportunities with low risk"
+            },
+            {
+              icon: "⚡",
+              label: "Max Yields",
+              description: "Leverage my ETH",
+              text: "Show me high-yield ETH strategies with 3-5x leverage"
+            }
+          ] : [
             {
               icon: "💰",
               label: "Stablecoins",
@@ -210,7 +237,22 @@
 
           return (
             <div className="rounded-2xl bg-white p-4 shadow-sm h-full flex flex-col">
-              <div className="text-sm font-semibold mb-3">Assistant</div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-semibold">Assistant</div>
+                {walletAddress ? (
+                  <div className="flex items-center gap-1.5 text-xs text-green-600">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                    Wallet Connected
+                  </div>
+                ) : (
+                  <button
+                    onClick={connectWallet}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                  >
+                    Connect Wallet
+                  </button>
+                )}
+              </div>
 
               {/* Input field at TOP for better discoverability */}
               <div className="mb-3">
@@ -410,8 +452,62 @@
           const [activeTx, setActiveTx] = useState(null);
           const [isScanning, setIsScanning] = useState(false);
           const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+          const [walletAddress, setWalletAddress] = useState(null);
+          const [isWalletConnecting, setIsWalletConnecting] = useState(false);
 
           function pushNotification(n){ const note = { id: uid('n'), ...n }; setNotifications(s=>[note,...s]); setTimeout(()=>setNotifications(s=>s.filter(x=>x.id!==note.id)),7000); }
+
+          // Wallet connection using window.ethereum (MetaMask)
+          async function connectWallet() {
+            if (!window.ethereum) {
+              pushNotification({ title: 'Wallet not found', body: 'Please install MetaMask to connect your wallet.' });
+              return;
+            }
+
+            setIsWalletConnecting(true);
+            try {
+              const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+              const address = accounts[0];
+              setWalletAddress(address);
+              pushNotification({
+                title: 'Wallet connected',
+                body: `Connected: ${address.slice(0, 6)}...${address.slice(-4)}`
+              });
+            } catch (error) {
+              console.error('Wallet connection error:', error);
+              pushNotification({ title: 'Connection failed', body: 'Could not connect to wallet.' });
+            } finally {
+              setIsWalletConnecting(false);
+            }
+          }
+
+          function disconnectWallet() {
+            setWalletAddress(null);
+            pushNotification({ title: 'Wallet disconnected', body: 'Your wallet has been disconnected.' });
+          }
+
+          // Auto-connect if already authorized
+          React.useEffect(() => {
+            if (window.ethereum) {
+              window.ethereum.request({ method: 'eth_accounts' })
+                .then(accounts => {
+                  if (accounts.length > 0) {
+                    setWalletAddress(accounts[0]);
+                  }
+                })
+                .catch(console.error);
+
+              // Listen for account changes
+              window.ethereum.on('accountsChanged', (accounts) => {
+                if (accounts.length > 0) {
+                  setWalletAddress(accounts[0]);
+                  pushNotification({ title: 'Account changed', body: 'Wallet account updated.' });
+                } else {
+                  setWalletAddress(null);
+                }
+              });
+            }
+          }, []);
 
           function createMandateFromIntent(template=null, opts={}){
             const base = template ? template : { asset: 'USDC', minAPY:6.5, maxLeverage:2, risk:'Medium', maxPosition:10000 };
@@ -482,33 +578,81 @@
 
           function closePosition(id){ setPositions(s=>s.filter(p=>p.id!==id)); pushNotification({ title: 'Position closed', body: 'Closed successfully.' }); }
 
-          const value = useMemo(()=>({ templates, createMandateFromIntent, mandates, signMandateWithWallet, proposals, openProposal, approveProposal, positions, closePosition, notifications, pushNotification, isScanning, activeMandate }), [templates, mandates, proposals, positions, notifications, isScanning, activeMandate]);
+          const value = useMemo(()=>({
+            templates,
+            createMandateFromIntent,
+            mandates,
+            signMandateWithWallet,
+            proposals,
+            openProposal,
+            approveProposal,
+            positions,
+            closePosition,
+            notifications,
+            pushNotification,
+            isScanning,
+            activeMandate,
+            walletAddress,
+            connectWallet,
+            disconnectWallet,
+            isWalletConnecting,
+            setProposals
+          }), [templates, mandates, proposals, positions, notifications, isScanning, activeMandate, walletAddress, isWalletConnecting]);
 
           return (
             <AppContext.Provider value={value}>
               <div className="min-h-screen bg-slate-50 py-10">
                 <div className="max-w-7xl mx-auto px-4">
-                  {/* Collapsible sidebar toggle */}
-                  <button
-                    onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                    className="mb-4 px-3 py-2 rounded-lg bg-white shadow-sm hover:shadow text-sm font-medium flex items-center gap-2"
-                  >
-                    {isSidebarCollapsed ? (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                        Show Assistant
-                      </>
+                  {/* Header with Wallet Connection */}
+                  <div className="mb-4 flex items-center justify-between">
+                    <button
+                      onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                      className="px-3 py-2 rounded-lg bg-white shadow-sm hover:shadow text-sm font-medium flex items-center gap-2"
+                    >
+                      {isSidebarCollapsed ? (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                          Show Assistant
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                          Hide Assistant
+                        </>
+                      )}
+                    </button>
+
+                    {/* Wallet Connection Button */}
+                    {walletAddress ? (
+                      <div className="flex items-center gap-3">
+                        <div className="px-4 py-2 rounded-lg bg-green-50 border border-green-200 text-sm font-medium text-green-700 flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                          {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                        </div>
+                        <button
+                          onClick={disconnectWallet}
+                          className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-sm font-medium"
+                        >
+                          Disconnect
+                        </button>
+                      </div>
                     ) : (
-                      <>
+                      <button
+                        onClick={connectWallet}
+                        disabled={isWalletConnecting}
+                        className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-medium flex items-center gap-2 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+                      >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                         </svg>
-                        Hide Assistant
-                      </>
+                        {isWalletConnecting ? 'Connecting...' : 'Connect Wallet'}
+                      </button>
                     )}
-                  </button>
+                  </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Left: Chat + Mandate - Collapsible */}
