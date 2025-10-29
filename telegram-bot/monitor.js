@@ -161,10 +161,14 @@ async function checkAllMandates() {
 }
 
 // Start monitoring service
-function startMonitoring() {
+async function startMonitoring() {
   console.log('🚀 Starting mandate monitoring service...');
   console.log(`   Interval: Every 15 minutes (${MONITOR_INTERVAL / 1000}s)`);
-  console.log(`   First scan will run immediately\n`);
+  console.log(`   Waiting for database to be ready...`);
+
+  // Wait for database to initialize
+  await db.waitForReady();
+  console.log(`   Database ready! First scan will run immediately\n`);
 
   // Run first check immediately
   checkAllMandates();

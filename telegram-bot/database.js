@@ -10,6 +10,7 @@ const DB_PATH = path.join(__dirname, 'gearbox_bot.db');
 
 class Database {
   constructor() {
+    this.ready = false;
     this.db = new sqlite3.Database(DB_PATH, (err) => {
       if (err) {
         console.error('❌ Error opening database:', err.message);
@@ -69,9 +70,30 @@ class Database {
 
       // Index for faster lookups
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_mandates_active ON mandates(active, signed)`);
-      this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recent ON notifications(mandate_id, sent_at)`);
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recent ON notifications(mandate_id, sent_at)`, (err) => {
+        if (err) {
+          console.error('❌ Error creating indexes:', err.message);
+        } else {
+          console.log('✅ Database tables initialized');
+          this.ready = true;
+        }
+      });
+    });
+  }
 
-      console.log('✅ Database tables initialized');
+  // Wait for database to be ready
+  waitForReady() {
+    return new Promise((resolve) => {
+      if (this.ready) {
+        resolve();
+      } else {
+        const checkReady = setInterval(() => {
+          if (this.ready) {
+            clearInterval(checkReady);
+            resolve();
+          }
+        }, 100);
+      }
     });
   }
 
