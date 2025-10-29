@@ -20,14 +20,16 @@ export interface WalletAnalysis {
 
 // Gearbox-compatible tokens on Ethereum
 const GEARBOX_TOKENS = [
-  { symbol: 'USDC', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
-  { symbol: 'USDT', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6 },
-  { symbol: 'DAI', address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
-  { symbol: 'WETH', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18 },
-  { symbol: 'wstETH', address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0', decimals: 18 },
-  { symbol: 'WBTC', address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', decimals: 8 },
-  { symbol: 'GHO', address: '0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f', decimals: 18 },
-  { symbol: 'sUSDe', address: '0x9D39A5DE30e57443BfF2A8307A4256c8797A3497', decimals: 18 },
+  { symbol: 'USDC', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, chain: 'mainnet' },
+  { symbol: 'USDT', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, chain: 'mainnet' },
+  { symbol: 'DAI', address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18, chain: 'mainnet' },
+  { symbol: 'WETH', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18, chain: 'mainnet' },
+  { symbol: 'wstETH', address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0', decimals: 18, chain: 'mainnet' },
+  { symbol: 'WBTC', address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', decimals: 8, chain: 'mainnet' },
+  { symbol: 'GHO', address: '0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f', decimals: 18, chain: 'mainnet' },
+  { symbol: 'sUSDe', address: '0x9D39A5DE30e57443BfF2A8307A4256c8797A3497', decimals: 18, chain: 'mainnet' },
+  // Plasma tokens
+  { symbol: 'USDT0', address: '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb', decimals: 6, chain: 'plasma' },
 ];
 
 // Simple price oracle using CoinGecko API (free, no auth required)
@@ -116,11 +118,16 @@ async function fetchTokenBalances(walletAddress: string): Promise<TokenBalance[]
       console.error('Error fetching ETH balance:', err);
     }
 
-    // Check ERC20 tokens
+    // Check ERC20 tokens on both chains
     for (const token of GEARBOX_TOKENS) {
       try {
+        // Select RPC URL based on chain
+        const rpcUrl = token.chain === 'plasma'
+          ? 'https://rpc.plasma.to'
+          : (process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com');
+
         // Query ERC20 balanceOf via RPC
-        const response = await fetch(process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com', {
+        const response = await fetch(rpcUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -143,7 +150,9 @@ async function fetchTokenBalances(walletAddress: string): Promise<TokenBalance[]
         const balance = Number(balanceRaw) / Math.pow(10, token.decimals);
 
         if (balance > 0) {
-          const valueUSD = balance * (prices[token.symbol] || 0);
+          // Use $1 for stablecoins/USDT0
+          const price = token.symbol === 'USDT0' ? 1 : (prices[token.symbol] || 0);
+          const valueUSD = balance * price;
           balances.push({
             symbol: token.symbol,
             name: token.symbol, // Simplified for MVP
@@ -153,7 +162,7 @@ async function fetchTokenBalances(walletAddress: string): Promise<TokenBalance[]
           });
         }
       } catch (err) {
-        console.error(`Error fetching ${token.symbol} balance:`, err);
+        console.error(`Error fetching ${token.symbol} balance on ${token.chain}:`, err);
       }
     }
 
@@ -184,6 +193,7 @@ export async function analyzeWalletHoldings(params: {
     // Map user tokens to Gearbox strategy tokens
     const suggestedSearchTokens: string[] = [];
     const stablecoins = gearboxCompatible.filter(t => ['USDC', 'USDT', 'DAI', 'GHO', 'sUSDe'].includes(t.symbol));
+    const usdt0 = gearboxCompatible.find(t => t.symbol === 'USDT0');
     const eth = gearboxCompatible.find(t => t.symbol === 'WETH' || t.symbol === 'wstETH' || t.symbol === 'ETH');
     const wstETH = gearboxCompatible.find(t => t.symbol === 'wstETH');
     const wbtc = gearboxCompatible.find(t => t.symbol === 'WBTC');
@@ -191,6 +201,11 @@ export async function analyzeWalletHoldings(params: {
     // Add USDC for any stablecoins (GHO, sUSDe, DAI, USDT all map to USDC strategies)
     if (stablecoins.length > 0) {
       suggestedSearchTokens.push('USDC');
+    }
+
+    // Add USDT0 for Plasma chain tokens
+    if (usdt0) {
+      suggestedSearchTokens.push('USDT0');
     }
 
     // Add WETH for ETH or WETH (ETH must be wrapped to use in Gearbox)

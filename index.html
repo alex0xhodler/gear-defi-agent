@@ -59,12 +59,8 @@
     <!-- Babel Standalone -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Wagmi & RainbowKit -->
-    <script src="https://cdn.jsdelivr.net/npm/viem@2.x/dist/viem.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@wagmi/core@2.x/dist/wagmi-core.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@wagmi/connectors@5.x/dist/wagmi-connectors.umd.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/@rainbow-me/rainbowkit@2.2.9/dist/index.css" />
-    <script src="https://unpkg.com/@rainbow-me/rainbowkit@2.2.9/dist/index.umd.js"></script>
+    <!-- Ethers.js for wallet interactions (better CDN support than wagmi/viem UMD) -->
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" type="application/javascript"></script>
 
     <!-- API Client -->
     <script src="/api-client.js"></script>
@@ -237,13 +233,14 @@
         function ChatPanel(){
           const { createMandateFromIntent, templates, setProposals, walletAddress, connectWallet, isWalletConnecting, openProposal, approveProposal } = useApp();
           const [messages, setMessages] = useState([
-            { id: uid('m'), from: 'agent', text: "Hi! I'm Sigma, the high-yield lending specialist. I help you earn rewards on tokens sitting idle in your wallet.", showWalletConnect: !walletAddress }
+            { id: uid('m'), from: 'agent', text: "Hey, I'm Sigma — an agent created by Gearbox masterminds to automate those 'boring DeFi' high-yield lending opportunities with tokens sitting in your wallet.", showWalletConnect: !walletAddress }
           ]);
           const [input, setInput] = useState('');
           const [isLoading, setIsLoading] = useState(false);
           const [apiClient] = useState(() => new window.GearboxAPIClient());
           const [availableStrategies, setAvailableStrategies] = useState([]);
           const [suggestedTokens, setSuggestedTokens] = useState([]);
+          const [walletTokenBalances, setWalletTokenBalances] = useState({}); // Store token symbol -> balance mapping
 
           // Dynamic quick replies - show strategies if available, then suggested tokens, otherwise show default options
           const quickReplies = availableStrategies.length > 0 ? [
@@ -359,6 +356,14 @@
                   const tokenSymbols = response.walletTokens.map(token => token.symbol);
                   console.log('🔄 Setting suggested tokens from auto-analysis:', tokenSymbols);
                   setSuggestedTokens(tokenSymbols);
+
+                  // Store balances for later use
+                  const balanceMap = {};
+                  response.walletTokens.forEach(token => {
+                    balanceMap[token.symbol] = parseFloat(token.balance).toFixed(2);
+                  });
+                  setWalletTokenBalances(balanceMap);
+                  console.log('💰 Stored wallet token balances:', balanceMap);
                 } else {
                   console.log('❌ No wallet tokens in auto-analysis response');
                 }
@@ -410,6 +415,14 @@
                 const tokenSymbols = response.walletTokens.map(token => token.symbol);
                 console.log('🔄 Setting suggested tokens:', tokenSymbols);
                 setSuggestedTokens(tokenSymbols);
+
+                // Store balances for later use
+                const balanceMap = {};
+                response.walletTokens.forEach(token => {
+                  balanceMap[token.symbol] = parseFloat(token.balance).toFixed(2);
+                });
+                setWalletTokenBalances(balanceMap);
+                console.log('💰 Stored wallet token balances:', balanceMap);
               } else {
                 console.log('❌ No wallet tokens in response');
               }
@@ -465,6 +478,18 @@
                         ) : (
                           <div className="flex items-center gap-2">
                             {m.text}
+                            {m.successLink && (
+                              <a
+                                href={m.successLink.url}
+                                target="_self"
+                                className="text-brand-pink font-bold hover:underline inline-flex items-center"
+                              >
+                                {m.successLink.text}
+                                <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                              </a>
+                            )}
                             {m.isLoading && (
                               <div className="flex gap-1">
                                 <div className="w-2 h-2 bg-brand-pink rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
@@ -552,53 +577,78 @@
                               }}
                               className="w-full px-4 py-2 rounded-lg border-2 border-border-default bg-bg-tertiary text-txt-primary placeholder-txt-tertiary focus:border-brand-pink focus:ring-2 focus:ring-brand-pink/20 text-sm"
                             />
-                            {m.strategyDetails.depositAmount > 0 && (
-                              <div className="text-xs text-txt-tertiary">
-                                Borrow: {(m.strategyDetails.depositAmount * ((m.strategyDetails.currentLeverage || m.strategyDetails.leverage) - 1)).toFixed(2)} {m.strategyDetails.underlyingSymbol || 'Token'}
-                              </div>
-                            )}
                           </div>
-                          <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-txt-secondary">Leverage</span>
-                              <span className="font-semibold text-brand-pink">{m.strategyDetails.currentLeverage || m.strategyDetails.leverage}x</span>
-                            </div>
-                            <input
-                              type="range"
-                              min={m.strategyDetails.minLeverage || 1}
-                              max={m.strategyDetails.maxLeverage || 10}
-                              step="0.1"
-                              value={m.strategyDetails.currentLeverage || m.strategyDetails.leverage}
-                              onChange={(e) => {
-                                const newLeverage = parseFloat(e.target.value);
-                                // Recalculate APY: (collateralAPY * leverage) - (borrowAPY * (leverage - 1))
-                                const newAPY = (m.strategyDetails.collateralAPY * newLeverage) - (m.strategyDetails.borrowAPY * (newLeverage - 1));
-                                const currentDeposit = m.strategyDetails.depositAmount || 0;
 
-                                // Update the message with new leverage, APY, and borrow amount
-                                setMessages(msgs => msgs.map(msg => {
-                                  if (msg.id === m.id && msg.strategyDetails) {
-                                    return {
-                                      ...msg,
-                                      strategyDetails: {
-                                        ...msg.strategyDetails,
-                                        currentLeverage: newLeverage,
-                                        projAPY: parseFloat(newAPY.toFixed(2)),
-                                        borrowAmount: currentDeposit * (newLeverage - 1)
+                          {/* Conditional: Only show for leveraged strategies */}
+                          {m.strategyDetails.strategyType === 'leveraged_credit_account' && (
+                            <>
+                              {m.strategyDetails.depositAmount > 0 && (
+                                <div className="text-xs text-txt-tertiary">
+                                  Borrow: {(m.strategyDetails.depositAmount * ((m.strategyDetails.currentLeverage || m.strategyDetails.leverage) - 1)).toFixed(2)} {m.strategyDetails.underlyingSymbol || 'Token'}
+                                </div>
+                              )}
+
+                              <div className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-txt-secondary">Leverage</span>
+                                  <span className="font-semibold text-brand-pink">{m.strategyDetails.currentLeverage || m.strategyDetails.leverage}x</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={m.strategyDetails.minLeverage || 1}
+                                  max={m.strategyDetails.maxLeverage || 10}
+                                  step="0.1"
+                                  value={m.strategyDetails.currentLeverage || m.strategyDetails.leverage}
+                                  onChange={(e) => {
+                                    const newLeverage = parseFloat(e.target.value);
+                                    // Recalculate APY: (collateralAPY * leverage) - (borrowAPY * (leverage - 1))
+                                    const newAPY = (m.strategyDetails.collateralAPY * newLeverage) - (m.strategyDetails.borrowAPY * (newLeverage - 1));
+                                    const currentDeposit = m.strategyDetails.depositAmount || 0;
+
+                                    // Update the message with new leverage, APY, and borrow amount
+                                    setMessages(msgs => msgs.map(msg => {
+                                      if (msg.id === m.id && msg.strategyDetails) {
+                                        return {
+                                          ...msg,
+                                          strategyDetails: {
+                                            ...msg.strategyDetails,
+                                            currentLeverage: newLeverage,
+                                            projAPY: parseFloat(newAPY.toFixed(2)),
+                                            borrowAmount: currentDeposit * (newLeverage - 1)
+                                          }
+                                        };
                                       }
-                                    };
-                                  }
-                                  return msg;
-                                }));
-                              }}
-                              className="w-full h-2 bg-border-default rounded-lg appearance-none cursor-pointer accent-brand-pink"
-                              style={{ accentColor: '#EA0890' }}
-                            />
-                            <div className="flex justify-between text-xs text-txt-tertiary">
-                              <span>{m.strategyDetails.minLeverage || 1}x</span>
-                              <span>{m.strategyDetails.maxLeverage || 10}x</span>
+                                      return msg;
+                                    }));
+                                  }}
+                                  className="w-full h-2 bg-border-default rounded-lg appearance-none cursor-pointer accent-brand-pink"
+                                  style={{ accentColor: '#EA0890' }}
+                                />
+                                <div className="flex justify-between text-xs text-txt-tertiary">
+                                  <span>{m.strategyDetails.minLeverage || 1}x</span>
+                                  <span>{m.strategyDetails.maxLeverage || 10}x</span>
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          {/* Info box for passive lending */}
+                          {m.strategyDetails.strategyType === 'passive_lending' && (
+                            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+                              <div className="flex items-start gap-2">
+                                <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                </svg>
+                                <div className="flex-1">
+                                  <div className="text-sm font-semibold text-blue-800">Safe Passive Lending</div>
+                                  <div className="text-xs text-blue-700 mt-1">
+                                    Deposit {m.strategyDetails.underlyingSymbol} into the pool to earn {m.strategyDetails.projAPY}% APY.
+                                    No leverage, no liquidation risk. Withdraw anytime (subject to pool liquidity).
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                          </div>
+                          )}
                           <div className="flex justify-between text-sm">
                             <span className="text-txt-secondary">Est. Gas</span>
                             <span className="font-semibold text-txt-primary">${m.strategyDetails.estimatedGas}</span>
@@ -624,78 +674,102 @@
                             // Clear strategy buttons
                             setAvailableStrategies([]);
 
-                            // Get current values from strategy
-                            const currentLeverage = m.strategyDetails.currentLeverage || m.strategyDetails.leverage;
-                            const borrowAmount = depositAmount * (currentLeverage - 1);
-                            const borrowRate = m.strategyDetails.borrowAPY;
+                            if (m.strategyDetails.strategyType === 'passive_lending') {
+                              // For passive lending: simple deposit, no health factor calculation
+                              const monthlyReturn = depositAmount * m.strategyDetails.projAPY / 100 / 12;
 
-                            // Show loading message while calculating health factor
-                            const calcId = uid('m');
-                            pushMessage('agent', 'Calculating position metrics...', { id: calcId, isLoading: true });
-
-                            try {
-                              // Call health calculation API
-                              const response = await fetch('/api/calculate-health', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  collateral_amount: depositAmount,
-                                  collateral_token: m.strategyDetails.underlyingSymbol || 'USDC',
-                                  leverage: currentLeverage,
-                                  target_apy: m.strategyDetails.collateralAPY
-                                })
-                              });
-
-                              const healthData = await response.json();
-
-                              // Remove loading message
-                              setMessages(msgs => msgs.filter(msg => msg.id !== calcId));
-
-                              // Calculate projected 30-day return
-                              // Formula: (depositAmount * leverage * collateralAPY / 12) - (borrowAmount * borrowAPY / 12)
-                              const monthlyReturn = (depositAmount * currentLeverage * m.strategyDetails.collateralAPY / 100 / 12) -
-                                                   (borrowAmount * borrowRate / 100 / 12);
-
-                              // Add approval form inline with calculated values
-                              pushMessage('agent', 'Great choice! Review the details and approve when ready.', {
+                              pushMessage('agent', 'Ready to deposit! Review and approve.', {
                                 proposalApproval: {
                                   ...m.strategyDetails,
                                   deposit: depositAmount,
-                                  borrow: borrowAmount,
-                                  borrowRate: borrowRate,
-                                  healthFactor: healthData.healthFactor || 1.8,
+                                  borrow: 0,
+                                  borrowRate: 0,
+                                  healthFactor: null, // No health factor for passive lending
                                   net30d: Math.round(monthlyReturn * 100) / 100,
-                                  leverage: currentLeverage,
-                                  liquidationPrice: healthData.liquidationPrice
+                                  leverage: 1, // No leverage
+                                  liquidationPrice: null
                                 }
                               });
-                            } catch (error) {
-                              console.error('Health calculation error:', error);
-                              // Remove loading message
-                              setMessages(msgs => msgs.filter(msg => msg.id !== calcId));
+                            } else {
+                              // For leveraged strategies: calculate health factor
+                              const currentLeverage = m.strategyDetails.currentLeverage || m.strategyDetails.leverage;
+                              const borrowAmount = depositAmount * (currentLeverage - 1);
+                              const borrowRate = m.strategyDetails.borrowAPY;
 
-                              // Fallback to simplified calculation if API fails
-                              const fallbackHealthFactor = 1.8; // Conservative estimate
-                              const monthlyReturn = (depositAmount * currentLeverage * m.strategyDetails.collateralAPY / 100 / 12) -
-                                                   (borrowAmount * borrowRate / 100 / 12);
+                              // Show loading message while calculating health factor
+                              const calcId = uid('m');
+                              pushMessage('agent', 'Calculating position metrics...', { id: calcId, isLoading: true });
 
-                              pushMessage('agent', 'Great choice! Review the details and approve when ready.', {
-                                proposalApproval: {
-                                  ...m.strategyDetails,
-                                  deposit: depositAmount,
-                                  borrow: borrowAmount,
-                                  borrowRate: borrowRate,
-                                  healthFactor: fallbackHealthFactor,
-                                  net30d: Math.round(monthlyReturn * 100) / 100,
+                              try {
+                                // Get real liquidation threshold for the collateral token
+                                const tokenSymbol = m.strategyDetails.underlyingSymbol || 'USDC';
+                                const liquidationThreshold = m.strategyDetails.liquidationThresholds?.[tokenSymbol];
+
+                                console.log('📊 Health calculation params:', {
+                                  token: tokenSymbol,
+                                  liquidationThreshold,
+                                  borrowAPY: borrowRate,
                                   leverage: currentLeverage
-                                }
-                              });
+                                });
+
+                                // Call health calculation API with real LT and borrow APY
+                                const response = await fetch('/api/calculate-health', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    collateral_amount: depositAmount,
+                                    collateral_token: tokenSymbol,
+                                    leverage: currentLeverage,
+                                    target_apy: m.strategyDetails.collateralAPY,
+                                    liquidation_threshold: liquidationThreshold,
+                                    borrow_apy: borrowRate
+                                  })
+                                });
+
+                                const healthData = await response.json();
+                                setMessages(msgs => msgs.filter(msg => msg.id !== calcId));
+
+                                const monthlyReturn = (depositAmount * currentLeverage * m.strategyDetails.collateralAPY / 100 / 12) -
+                                                     (borrowAmount * borrowRate / 100 / 12);
+
+                                pushMessage('agent', 'Great choice! Review the details and approve when ready.', {
+                                  proposalApproval: {
+                                    ...m.strategyDetails,
+                                    deposit: depositAmount,
+                                    borrow: borrowAmount,
+                                    borrowRate: borrowRate,
+                                    healthFactor: healthData.healthFactor || 1.8,
+                                    net30d: Math.round(monthlyReturn * 100) / 100,
+                                    leverage: currentLeverage,
+                                    liquidationPrice: healthData.liquidationPrice
+                                  }
+                                });
+                              } catch (error) {
+                                console.error('Health calculation error:', error);
+                                setMessages(msgs => msgs.filter(msg => msg.id !== calcId));
+
+                                const fallbackHealthFactor = 1.8;
+                                const monthlyReturn = (depositAmount * currentLeverage * m.strategyDetails.collateralAPY / 100 / 12) -
+                                                     (borrowAmount * borrowRate / 100 / 12);
+
+                                pushMessage('agent', 'Great choice! Review the details and approve when ready.', {
+                                  proposalApproval: {
+                                    ...m.strategyDetails,
+                                    deposit: depositAmount,
+                                    borrow: borrowAmount,
+                                    borrowRate: borrowRate,
+                                    healthFactor: fallbackHealthFactor,
+                                    net30d: Math.round(monthlyReturn * 100) / 100,
+                                    leverage: currentLeverage
+                                  }
+                                });
+                              }
                             }
                           }}
                           disabled={!m.strategyDetails.depositAmount || m.strategyDetails.depositAmount <= 0}
                           className="flex justify-center items-center w-full h-[40px] px-4 py-2 gap-2 flex-shrink-0 rounded-xl bg-brand-pink text-white font-bold hover:bg-[#D10780] disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
                         >
-                          Open Position
+                          {m.strategyDetails.strategyType === 'passive_lending' ? 'Deposit to Pool' : 'Open Leveraged Position'}
                         </button>
                       </div>
                     )}
@@ -713,42 +787,57 @@
                         </div>
 
                         <div className="bg-bg-tertiary rounded-xl p-4 mb-4">
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className={`grid ${m.proposalApproval.strategyType === 'leveraged_credit_account' ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
                             <div>
-                              <div className="text-xs text-txt-secondary mb-1">Investment</div>
+                              <div className="text-xs text-txt-secondary mb-1">
+                                {m.proposalApproval.strategyType === 'passive_lending' ? 'Deposit Amount' : 'Investment'}
+                              </div>
                               <div className="text-lg font-semibold text-txt-primary">${m.proposalApproval.deposit.toFixed(2)}</div>
                             </div>
-                            <div>
-                              <div className="text-xs text-txt-secondary mb-1">Borrow</div>
-                              <div className="text-lg font-semibold text-txt-primary">${m.proposalApproval.borrow.toFixed(2)} <span className="text-sm text-txt-tertiary">at {m.proposalApproval.borrowRate.toFixed(2)}%</span></div>
-                            </div>
+                            {m.proposalApproval.strategyType === 'leveraged_credit_account' && (
+                              <div>
+                                <div className="text-xs text-txt-secondary mb-1">Borrow</div>
+                                <div className="text-lg font-semibold text-txt-primary">
+                                  ${m.proposalApproval.borrow.toFixed(2)}
+                                  <span className="text-sm text-txt-tertiary"> at {m.proposalApproval.borrowRate.toFixed(2)}%</span>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
 
                         <div className="space-y-3 mb-4">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-txt-secondary">Leverage</span>
-                            <span className="text-lg font-bold text-brand-pink">{m.proposalApproval.leverage}x</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-txt-secondary">Health Factor</span>
-                            <span className={`text-lg font-bold ${m.proposalApproval.healthFactor >= 1.5 ? 'text-brand-green' : 'text-yellow-600'}`}>
-                              {m.proposalApproval.healthFactor.toFixed(2)}x
-                            </span>
-                          </div>
-                          {m.proposalApproval.liquidationPrice && (
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-txt-secondary">Liquidation Price</span>
-                              <span className="text-sm font-semibold text-txt-primary">${m.proposalApproval.liquidationPrice.toFixed(2)}</span>
+                          {m.proposalApproval.strategyType === 'leveraged_credit_account' ? (
+                            <>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-txt-secondary">Leverage</span>
+                                <span className="text-lg font-bold text-brand-pink">{m.proposalApproval.leverage.toFixed(1)}x</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-txt-secondary">Health Factor</span>
+                                <span className={`text-lg font-bold ${m.proposalApproval.healthFactor >= 1.5 ? 'text-brand-green' : 'text-yellow-600'}`}>
+                                  {m.proposalApproval.healthFactor.toFixed(2)}x
+                                </span>
+                              </div>
+                              {m.proposalApproval.liquidationPrice && (
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-txt-secondary">Liquidation Price</span>
+                                  <span className="text-sm font-semibold text-txt-primary">${m.proposalApproval.liquidationPrice.toFixed(2)}</span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="text-sm text-txt-secondary text-center py-2 bg-green-50 rounded-lg border border-green-200">
+                              ✅ No liquidation risk - your funds are safely deposited in the lending pool
                             </div>
                           )}
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-txt-secondary">Projected net (30d)</span>
+                            <span className="text-sm text-txt-secondary">Projected Earnings (30d)</span>
                             <span className="text-lg font-bold text-brand-green">${m.proposalApproval.net30d.toFixed(2)}</span>
                           </div>
                         </div>
 
-                        {m.proposalApproval.healthFactor < 1.5 && (
+                        {m.proposalApproval.strategyType === 'leveraged_credit_account' && m.proposalApproval.healthFactor < 1.5 && (
                           <div className="mb-4 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
                             <div className="flex items-start gap-2">
                               <svg className="w-5 h-5 text-yellow-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
@@ -764,8 +853,7 @@
 
                         <button
                           onClick={() => {
-                            approveProposal(m.proposalApproval.id);
-                            pushMessage('agent', 'Position approved! Head back to the main Gearbox app to view your credit account and manage your position.');
+                            approveProposal(m.proposalApproval.id, m.proposalApproval.deposit);
                           }}
                           className="flex justify-center items-center w-full h-[40px] px-4 py-2 gap-2 flex-shrink-0 rounded-xl bg-brand-green text-white font-bold hover:bg-[#1EB050] transition-all shadow-lg hover:shadow-xl"
                         >
@@ -785,18 +873,10 @@
                       key={q.label}
                       onClick={async () => {
                         if (q.isStrategy) {
-                          // Fetch balance if wallet is connected
-                          let userBalance = null;
-                          if (walletAddress && window.fetchTokenBalance) {
-                            try {
-                              userBalance = await window.fetchTokenBalance(
-                                q.strategy.underlyingSymbol || 'USDC',
-                                walletAddress
-                              );
-                            } catch (error) {
-                              console.error('Failed to fetch balance:', error);
-                            }
-                          }
+                          // Get balance from stored wallet token balances
+                          const tokenSymbol = q.strategy.underlyingSymbol || 'USDC';
+                          const userBalance = walletTokenBalances[tokenSymbol] || '0.00';
+                          console.log(`💰 Using stored balance for ${tokenSymbol}:`, userBalance);
 
                           // Show strategy details inline in chat with balance
                           pushMessage('agent', `Here are the details for ${q.strategy.title}:`, {
@@ -1182,22 +1262,211 @@
 
           function openProposal(p){ setActiveProposal(p); }
 
-          function approveProposal(id){
+          async function approveProposal(id, depositAmount){
             const p = proposals.find(x=>x.id===id);
             if(!p) return;
-            // simulate tx lifecycle
-            const tx = uid('0xtx');
-            setActiveTx(tx);
-            setProposals([]); // clear feed after user commits (clean UX)
-            pushNotification({ title: 'Proposal approved', body: `Tx ${tx} submitted` });
 
-            setTimeout(()=>{
-              const pos = { id: uid('pos'), title: p.title, value: p.deposit + p.net30d, healthFactor: p.healthFactor, txId: tx };
+            // Validate wallet connection
+            if (!walletAddress) {
+              pushNotification({ title: 'Wallet not connected', body: 'Please connect your wallet first.' });
+              return;
+            }
+
+            // Validate deposit amount
+            if (!depositAmount || depositAmount <= 0) {
+              pushNotification({ title: 'Invalid deposit', body: 'Please enter a valid deposit amount.' });
+              return;
+            }
+
+            // Extract deposit parameters
+            const poolAddress = p.poolAddress;
+            const tokenAddress = p.underlyingToken;
+            const tokenSymbol = p.underlyingSymbol || 'Token';
+            const amount = depositAmount.toString();
+
+            console.log('🚀 Starting real deposit transaction:', {
+              pool: poolAddress,
+              token: tokenAddress,
+              symbol: tokenSymbol,
+              amount,
+              user: walletAddress
+            });
+
+            try {
+              // Check ethers.js is loaded
+              if (!window.ethers) {
+                throw new Error('Ethers.js not loaded. Please refresh the page.');
+              }
+
+              // Check MetaMask/wallet is installed
+              if (!window.ethereum) {
+                throw new Error('Please install MetaMask or another Web3 wallet');
+              }
+
+              // Get signer from MetaMask
+              const provider = new ethers.providers.Web3Provider(window.ethereum);
+              const signer = provider.getSigner();
+
+              // Step 1: Get token decimals
+              const decimals = await readContract(wagmiConfig, {
+                address: tokenAddress,
+                abi: [
+                  {
+                    name: 'decimals',
+                    type: 'function',
+                    stateMutability: 'view',
+                    inputs: [],
+                    outputs: [{ type: 'uint8' }],
+                  },
+                ],
+                functionName: 'decimals',
+              });
+
+              console.log(`💰 Token decimals: ${decimals}`);
+
+              // Step 2: Convert amount to wei
+              const amountWei = parseUnits(amount, decimals);
+              console.log(`💰 Amount in wei: ${amountWei}`);
+
+              // Step 3: Check existing allowance
+              const currentAllowance = await readContract(wagmiConfig, {
+                address: tokenAddress,
+                abi: [
+                  {
+                    name: 'allowance',
+                    type: 'function',
+                    stateMutability: 'view',
+                    inputs: [
+                      { name: 'owner', type: 'address' },
+                      { name: 'spender', type: 'address' },
+                    ],
+                    outputs: [{ type: 'uint256' }],
+                  },
+                ],
+                functionName: 'allowance',
+                args: [walletAddress, poolAddress],
+              });
+
+              console.log(`✅ Current allowance: ${currentAllowance}`);
+
+              let approvalTxHash;
+
+              // Step 4: Approve if needed (use infinite approval for gas savings)
+              if (currentAllowance < amountWei) {
+                pushNotification({ title: 'Approval required', body: `Approving ${tokenSymbol} for deposit...` });
+                console.log('🔐 Approving pool for infinite amount...');
+
+                approvalTxHash = await writeContract(wagmiConfig, {
+                  address: tokenAddress,
+                  abi: [
+                    {
+                      name: 'approve',
+                      type: 'function',
+                      stateMutability: 'nonpayable',
+                      inputs: [
+                        { name: 'spender', type: 'address' },
+                        { name: 'amount', type: 'uint256' },
+                      ],
+                      outputs: [{ type: 'bool' }],
+                    },
+                  ],
+                  functionName: 'approve',
+                  args: [poolAddress, maxUint256],
+                });
+
+                console.log(`⏳ Approval pending: ${approvalTxHash}`);
+                pushNotification({ title: 'Waiting for approval', body: `Transaction: ${approvalTxHash.slice(0, 10)}...` });
+
+                // Wait for approval confirmation
+                await waitForTransactionReceipt(wagmiConfig, { hash: approvalTxHash });
+                console.log(`✅ Approval confirmed: ${approvalTxHash}`);
+                pushNotification({ title: 'Approval confirmed', body: 'Now depositing...' });
+              } else {
+                console.log('✅ Sufficient allowance already exists');
+              }
+
+              // Step 5: Deposit into pool using depositWithReferral
+              console.log('💸 Depositing into pool...');
+              pushNotification({ title: 'Deposit starting', body: `Depositing ${amount} ${tokenSymbol}...` });
+
+              const depositTxHash = await writeContract(wagmiConfig, {
+                address: poolAddress,
+                abi: [
+                  {
+                    name: 'depositWithReferral',
+                    type: 'function',
+                    stateMutability: 'nonpayable',
+                    inputs: [
+                      { name: 'assets', type: 'uint256' },
+                      { name: 'receiver', type: 'address' },
+                      { name: 'referralCode', type: 'uint256' },
+                    ],
+                    outputs: [{ type: 'uint256' }],
+                  },
+                ],
+                functionName: 'depositWithReferral',
+                args: [amountWei, walletAddress, BigInt(0)],
+              });
+
+              setActiveTx(depositTxHash);
+              setProposals([]); // clear feed after user commits (clean UX)
+              console.log(`⏳ Deposit pending: ${depositTxHash}`);
+              pushNotification({ title: 'Deposit submitted', body: `Transaction: ${depositTxHash.slice(0, 10)}...` });
+
+              // Wait for deposit confirmation
+              const receipt = await waitForTransactionReceipt(wagmiConfig, { hash: depositTxHash });
+              console.log(`✅ Deposit confirmed: ${depositTxHash}`);
+
+              // Step 6: Parse shares from Transfer event logs
+              const transferEventSignature = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+              const transferLog = receipt.logs.find(
+                (log) =>
+                  log.topics[0] === transferEventSignature &&
+                  log.topics[1] === '0x0000000000000000000000000000000000000000000000000000000000000000' && // from 0x0
+                  log.topics[2]?.toLowerCase().includes(walletAddress.toLowerCase().slice(2)) // to user
+              );
+
+              let shares = '0';
+              if (transferLog && transferLog.data) {
+                const sharesWei = BigInt(transferLog.data);
+                shares = formatUnits(sharesWei, decimals);
+                console.log(`🎉 Shares received: ${shares}`);
+              } else {
+                console.warn('⚠️ Could not parse shares from logs');
+              }
+
+              // Create position
+              const pos = {
+                id: uid('pos'),
+                title: p.title,
+                value: p.deposit,
+                healthFactor: p.healthFactor,
+                txId: depositTxHash,
+                shares: shares
+              };
               setPositions(s=>[pos,...s]);
-              pushNotification({ title: 'Position opened', body: `${p.title} is now active.` });
-            }, 1400);
+              pushNotification({ title: 'Deposit successful!', body: `Received ${parseFloat(shares).toFixed(4)} pool tokens` });
 
-            setTimeout(()=> setActiveTx(null), 5000);
+              // Add success message with link to Gearbox dashboard
+              setTimeout(() => {
+                pushMessage('agent', 'Deposit complete! Your position is now active. View and manage your positions on the ', {
+                  successLink: {
+                    url: 'https://app.gearbox.fi/dashboard',
+                    text: 'Gearbox Dashboard'
+                  }
+                });
+              }, 500);
+
+              setTimeout(()=> setActiveTx(null), 2000);
+
+            } catch (error) {
+              console.error('❌ Deposit transaction failed:', error);
+              setActiveTx(null);
+              pushNotification({
+                title: 'Transaction failed',
+                body: error.message || 'Please try again'
+              });
+            }
           }
 
           function closePosition(id){ setPositions(s=>s.filter(p=>p.id!==id)); pushNotification({ title: 'Position closed', body: 'Closed successfully.' }); }
@@ -1361,7 +1630,35 @@
           );
         }
 
-        // Render the app
+        // Wait for ethers to load, then initialize web3 config
+        let initAttempts = 0;
+        const MAX_INIT_ATTEMPTS = 50; // 5 seconds max
+
+        function initializeWeb3Config() {
+          initAttempts++;
+
+          if (typeof window.initWeb3 === 'function' && window.ethers) {
+            try {
+              window.web3Config = window.initWeb3();
+              console.log('✅ Web3 config initialized with ethers.js after', initAttempts, 'attempts');
+            } catch (error) {
+              console.error('❌ Failed to initialize web3 config:', error);
+            }
+          } else if (initAttempts < MAX_INIT_ATTEMPTS) {
+            if (initAttempts === 1) {
+              console.log('⏳ Waiting for ethers.js to load...');
+            }
+            setTimeout(initializeWeb3Config, 100); // Retry in 100ms
+          } else {
+            console.error('❌ Ethers.js failed to load after 5 seconds');
+            console.log('window.ethers:', window.ethers);
+          }
+        }
+
+        // Start initialization check
+        initializeWeb3Config();
+
+        // Render the app (will work without wallet initially, lazy-load config on deposit)
         const root = createRoot(document.getElementById('root'));
         root.render(
             <StrictMode>

@@ -1,6 +1,8 @@
 // Tool implementation: calculate_position_metrics
 // Calculates health factor, liquidation price, and projected returns for leveraged positions
 
+import { getTokenPriceUSD } from '../utils/price-oracle.js';
+
 export interface PositionMetrics {
   healthFactor: number;
   liquidationPrice: number;
@@ -15,47 +17,15 @@ export interface PositionMetrics {
   recommendations: string[];
 }
 
-// Token liquidation thresholds (Gearbox V3 typical values)
-const LIQUIDATION_THRESHOLDS: Record<string, number> = {
-  USDC: 0.95, // 95% LTV (very safe)
-  USDT: 0.95,
-  DAI: 0.95,
-  WETH: 0.85, // 85% LTV
-  wstETH: 0.83, // 83% LTV
-  WBTC: 0.80, // 80% LTV
-};
-
-// Borrowing APY rates (approximate Gearbox rates)
-const BORROW_RATES: Record<string, number> = {
-  USDC: 4.5,
-  USDT: 4.2,
-  DAI: 4.8,
-  WETH: 3.5,
-  wstETH: 3.2,
-  WBTC: 5.0,
-};
-
-// Get token price (simplified - in production use oracle)
-async function getTokenPrice(symbol: string): Promise<number> {
-  const prices: Record<string, number> = {
-    USDC: 1,
-    USDT: 1,
-    DAI: 1,
-    WETH: 3000,
-    wstETH: 3500,
-    WBTC: 60000,
-  };
-
-  return prices[symbol.toUpperCase()] || 1;
-}
-
 export async function calculatePositionMetrics(params: {
   collateral_amount: number;
   collateral_token: string;
   leverage: number;
   target_apy: number;
+  liquidation_threshold?: number; // Real LT from credit manager (0-1 scale)
+  borrow_apy?: number; // Real borrow APY from pool
 }): Promise<PositionMetrics> {
-  const { collateral_amount, collateral_token, leverage, target_apy } = params;
+  const { collateral_amount, collateral_token, leverage, target_apy, liquidation_threshold, borrow_apy } = params;
 
   // Validate inputs
   if (collateral_amount <= 0) {
@@ -66,7 +36,9 @@ export async function calculatePositionMetrics(params: {
   }
 
   const token = collateral_token.toUpperCase();
-  const tokenPrice = await getTokenPrice(token);
+
+  // Use real Gearbox price oracle
+  const tokenPrice = await getTokenPriceUSD(token);
   const collateralValueUSD = collateral_amount * tokenPrice;
 
   // Calculate debt amount (leverage = collateral + debt / collateral)
@@ -75,8 +47,9 @@ export async function calculatePositionMetrics(params: {
   const debtValueUSD = collateralValueUSD * (leverage - 1);
   const totalPositionValue = collateralValueUSD + debtValueUSD;
 
-  // Get liquidation threshold for this token
-  const ltv = LIQUIDATION_THRESHOLDS[token] || 0.80;
+  // Use real liquidation threshold from credit manager, or fallback to 80%
+  const ltv = liquidation_threshold || 0.80;
+  console.log(`📊 Using liquidation threshold for ${token}: ${(ltv * 100).toFixed(1)}%`);
 
   // Health Factor = (Collateral * LTV) / Debt
   // If HF < 1, position is liquidatable
@@ -86,8 +59,10 @@ export async function calculatePositionMetrics(params: {
   // Simplified: liquidation occurs when collateral value drops such that HF = 1
   const liquidationPrice = tokenPrice * (1 / healthFactor) * ltv;
 
-  // Calculate returns
-  const borrowAPY = BORROW_RATES[token] || 5.0;
+  // Calculate returns using real borrow APY
+  const borrowAPY = borrow_apy || 5.0; // Use real borrow APY from pool
+  console.log(`💸 Using borrow APY for ${token}: ${borrowAPY.toFixed(2)}%`);
+
   const grossYieldAPY = target_apy * leverage; // Leveraged yield
   const borrowCostAPY = borrowAPY * (leverage - 1); // Borrow cost on debt portion
   const netAPY = grossYieldAPY - borrowCostAPY;

@@ -12,7 +12,7 @@ export const TOOL_DEFINITIONS = [
       properties: {
         asset: {
           type: SchemaType.STRING,
-          description: 'Token symbol (USDC, WETH, wstETH, etc.)',
+          description: 'Token symbol - use EXACT symbol from wallet including numbers (e.g., USDC, WETH, wstETH, GHO, USDT0 for Plasma). IMPORTANT: Preserve the exact token name including any trailing numbers or identifiers.',
         },
         min_apy: {
           type: SchemaType.NUMBER,
@@ -88,6 +88,7 @@ IMPORTANT Query Behavior:
 - By default, show ALL available opportunities for a token and let the user choose
 - If no opportunities are found with filters, AUTOMATICALLY retry WITHOUT filters
 - Always show users what's available first, then help them filter if needed
+- CRITICAL: Use the EXACT token symbol from the wallet including any numbers (e.g., USDT0, not USDT). Token names with numbers are different assets on different chains.
 
 IMPORTANT Response Format:
 - When user asks for opportunities, you MUST call the query_farm_opportunities tool first
