@@ -520,6 +520,46 @@
                         <div className="space-y-3 mb-6">
                           <div className="space-y-2">
                             <div className="flex justify-between text-sm">
+                              <span className="text-txt-secondary">Deposit Amount ({m.strategyDetails.underlyingToken || 'Token'})</span>
+                              {m.strategyDetails.userBalance && (
+                                <span className="text-xs text-txt-tertiary">Balance: {m.strategyDetails.userBalance}</span>
+                              )}
+                            </div>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={m.strategyDetails.depositAmount || ''}
+                              placeholder="Enter amount to deposit"
+                              onChange={(e) => {
+                                const newDepositAmount = parseFloat(e.target.value) || 0;
+                                const currentLeverage = m.strategyDetails.currentLeverage || m.strategyDetails.leverage;
+
+                                // Update the message with new deposit amount
+                                setMessages(msgs => msgs.map(msg => {
+                                  if (msg.id === m.id && msg.strategyDetails) {
+                                    return {
+                                      ...msg,
+                                      strategyDetails: {
+                                        ...msg.strategyDetails,
+                                        depositAmount: newDepositAmount,
+                                        borrowAmount: newDepositAmount * (currentLeverage - 1)
+                                      }
+                                    };
+                                  }
+                                  return msg;
+                                }));
+                              }}
+                              className="w-full px-4 py-2 rounded-lg border-2 border-border-default bg-bg-tertiary text-txt-primary placeholder-txt-tertiary focus:border-brand-pink focus:ring-2 focus:ring-brand-pink/20 text-sm"
+                            />
+                            {m.strategyDetails.depositAmount > 0 && (
+                              <div className="text-xs text-txt-tertiary">
+                                Borrow: {(m.strategyDetails.depositAmount * ((m.strategyDetails.currentLeverage || m.strategyDetails.leverage) - 1)).toFixed(2)} {m.strategyDetails.underlyingToken || 'Token'}
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
                               <span className="text-txt-secondary">Leverage</span>
                               <span className="font-semibold text-brand-pink">{m.strategyDetails.currentLeverage || m.strategyDetails.leverage}x</span>
                             </div>
@@ -533,8 +573,9 @@
                                 const newLeverage = parseFloat(e.target.value);
                                 // Recalculate APY: (collateralAPY * leverage) - (borrowAPY * (leverage - 1))
                                 const newAPY = (m.strategyDetails.collateralAPY * newLeverage) - (m.strategyDetails.borrowAPY * (newLeverage - 1));
+                                const currentDeposit = m.strategyDetails.depositAmount || 0;
 
-                                // Update the message with new leverage and APY
+                                // Update the message with new leverage, APY, and borrow amount
                                 setMessages(msgs => msgs.map(msg => {
                                   if (msg.id === m.id && msg.strategyDetails) {
                                     return {
@@ -542,7 +583,8 @@
                                       strategyDetails: {
                                         ...msg.strategyDetails,
                                         currentLeverage: newLeverage,
-                                        projAPY: parseFloat(newAPY.toFixed(2))
+                                        projAPY: parseFloat(newAPY.toFixed(2)),
+                                        borrowAmount: currentDeposit * (newLeverage - 1)
                                       }
                                     };
                                   }
@@ -568,22 +610,90 @@
                         </div>
 
                         <button
-                          onClick={() => {
+                          onClick={async () => {
+                            // Validate deposit amount
+                            const depositAmount = m.strategyDetails.depositAmount;
+                            if (!depositAmount || depositAmount <= 0) {
+                              pushNotification({
+                                title: 'Deposit amount required',
+                                body: 'Please enter a deposit amount to continue.'
+                              });
+                              return;
+                            }
+
                             // Clear strategy buttons
                             setAvailableStrategies([]);
-                            // Add approval form inline
-                            pushMessage('agent', 'Great choice! Review the details and approve when ready.', {
-                              proposalApproval: {
-                                ...m.strategyDetails,
-                                deposit: 1000,
-                                borrow: 500,
-                                borrowRate: 5.5,
-                                healthFactor: 1.8,
-                                net30d: 45
-                              }
-                            });
+
+                            // Get current values from strategy
+                            const currentLeverage = m.strategyDetails.currentLeverage || m.strategyDetails.leverage;
+                            const borrowAmount = depositAmount * (currentLeverage - 1);
+                            const borrowRate = m.strategyDetails.borrowAPY;
+
+                            // Show loading message while calculating health factor
+                            const calcId = uid('m');
+                            pushMessage('agent', 'Calculating position metrics...', { id: calcId, isLoading: true });
+
+                            try {
+                              // Call health calculation API
+                              const response = await fetch('/api/calculate-health', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  collateral_amount: depositAmount,
+                                  collateral_token: m.strategyDetails.underlyingToken || 'USDC',
+                                  leverage: currentLeverage,
+                                  target_apy: m.strategyDetails.collateralAPY
+                                })
+                              });
+
+                              const healthData = await response.json();
+
+                              // Remove loading message
+                              setMessages(msgs => msgs.filter(msg => msg.id !== calcId));
+
+                              // Calculate projected 30-day return
+                              // Formula: (depositAmount * leverage * collateralAPY / 12) - (borrowAmount * borrowAPY / 12)
+                              const monthlyReturn = (depositAmount * currentLeverage * m.strategyDetails.collateralAPY / 100 / 12) -
+                                                   (borrowAmount * borrowRate / 100 / 12);
+
+                              // Add approval form inline with calculated values
+                              pushMessage('agent', 'Great choice! Review the details and approve when ready.', {
+                                proposalApproval: {
+                                  ...m.strategyDetails,
+                                  deposit: depositAmount,
+                                  borrow: borrowAmount,
+                                  borrowRate: borrowRate,
+                                  healthFactor: healthData.healthFactor || 1.8,
+                                  net30d: Math.round(monthlyReturn * 100) / 100,
+                                  leverage: currentLeverage,
+                                  liquidationPrice: healthData.liquidationPrice
+                                }
+                              });
+                            } catch (error) {
+                              console.error('Health calculation error:', error);
+                              // Remove loading message
+                              setMessages(msgs => msgs.filter(msg => msg.id !== calcId));
+
+                              // Fallback to simplified calculation if API fails
+                              const fallbackHealthFactor = 1.8; // Conservative estimate
+                              const monthlyReturn = (depositAmount * currentLeverage * m.strategyDetails.collateralAPY / 100 / 12) -
+                                                   (borrowAmount * borrowRate / 100 / 12);
+
+                              pushMessage('agent', 'Great choice! Review the details and approve when ready.', {
+                                proposalApproval: {
+                                  ...m.strategyDetails,
+                                  deposit: depositAmount,
+                                  borrow: borrowAmount,
+                                  borrowRate: borrowRate,
+                                  healthFactor: fallbackHealthFactor,
+                                  net30d: Math.round(monthlyReturn * 100) / 100,
+                                  leverage: currentLeverage
+                                }
+                              });
+                            }
                           }}
-                          className="flex justify-center items-center w-full h-[40px] px-4 py-2 gap-2 flex-shrink-0 rounded-xl bg-brand-pink text-white font-bold hover:bg-[#D10780] transition-all shadow-lg hover:shadow-xl"
+                          disabled={!m.strategyDetails.depositAmount || m.strategyDetails.depositAmount <= 0}
+                          className="flex justify-center items-center w-full h-[40px] px-4 py-2 gap-2 flex-shrink-0 rounded-xl bg-brand-pink text-white font-bold hover:bg-[#D10780] disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
                         >
                           Open Position
                         </button>
@@ -598,7 +708,7 @@
                           </div>
                           <div className="text-right">
                             <div className="text-xs text-txt-tertiary">Projected APY</div>
-                            <div className="text-2xl font-bold text-indigo-600">{m.proposalApproval.projAPY}%</div>
+                            <div className="text-2xl font-bold text-brand-pink">{m.proposalApproval.projAPY}%</div>
                           </div>
                         </div>
 
@@ -606,27 +716,51 @@
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <div className="text-xs text-txt-secondary mb-1">Investment</div>
-                              <div className="text-lg font-semibold text-txt-primary">${m.proposalApproval.deposit}</div>
+                              <div className="text-lg font-semibold text-txt-primary">${m.proposalApproval.deposit.toFixed(2)}</div>
                             </div>
                             <div>
                               <div className="text-xs text-txt-secondary mb-1">Borrow</div>
-                              <div className="text-lg font-semibold text-txt-primary">${m.proposalApproval.borrow} <span className="text-sm text-txt-tertiary">at {m.proposalApproval.borrowRate}%</span></div>
+                              <div className="text-lg font-semibold text-txt-primary">${m.proposalApproval.borrow.toFixed(2)} <span className="text-sm text-txt-tertiary">at {m.proposalApproval.borrowRate.toFixed(2)}%</span></div>
                             </div>
                           </div>
                         </div>
 
-                        <div className="space-y-3 mb-6">
+                        <div className="space-y-3 mb-4">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-txt-secondary">Leverage</span>
+                            <span className="text-lg font-bold text-brand-pink">{m.proposalApproval.leverage}x</span>
+                          </div>
                           <div className="flex justify-between items-center">
                             <span className="text-sm text-txt-secondary">Health Factor</span>
                             <span className={`text-lg font-bold ${m.proposalApproval.healthFactor >= 1.5 ? 'text-brand-green' : 'text-yellow-600'}`}>
-                              {m.proposalApproval.healthFactor}x
+                              {m.proposalApproval.healthFactor.toFixed(2)}x
                             </span>
                           </div>
+                          {m.proposalApproval.liquidationPrice && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-txt-secondary">Liquidation Price</span>
+                              <span className="text-sm font-semibold text-txt-primary">${m.proposalApproval.liquidationPrice.toFixed(2)}</span>
+                            </div>
+                          )}
                           <div className="flex justify-between items-center">
                             <span className="text-sm text-txt-secondary">Projected net (30d)</span>
-                            <span className="text-lg font-bold text-txt-primary">${m.proposalApproval.net30d}</span>
+                            <span className="text-lg font-bold text-brand-green">${m.proposalApproval.net30d.toFixed(2)}</span>
                           </div>
                         </div>
+
+                        {m.proposalApproval.healthFactor < 1.5 && (
+                          <div className="mb-4 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
+                            <div className="flex items-start gap-2">
+                              <svg className="w-5 h-5 text-yellow-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                              </svg>
+                              <div className="flex-1">
+                                <div className="text-sm font-semibold text-yellow-800">Lower Health Factor</div>
+                                <div className="text-xs text-yellow-700 mt-1">This position has a health factor below 1.5x. Consider reducing leverage to lower liquidation risk.</div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         <button
                           onClick={() => {
@@ -649,10 +783,28 @@
                   {quickReplies.map((q, idx) => (
                     <button
                       key={q.label}
-                      onClick={() => {
+                      onClick={async () => {
                         if (q.isStrategy) {
-                          // Show strategy details inline in chat
-                          pushMessage('agent', `Here are the details for ${q.strategy.title}:`, { strategyDetails: q.strategy });
+                          // Fetch balance if wallet is connected
+                          let userBalance = null;
+                          if (walletAddress && window.fetchTokenBalance) {
+                            try {
+                              userBalance = await window.fetchTokenBalance(
+                                q.strategy.underlyingToken || 'USDC',
+                                walletAddress
+                              );
+                            } catch (error) {
+                              console.error('Failed to fetch balance:', error);
+                            }
+                          }
+
+                          // Show strategy details inline in chat with balance
+                          pushMessage('agent', `Here are the details for ${q.strategy.title}:`, {
+                            strategyDetails: {
+                              ...q.strategy,
+                              userBalance: userBalance
+                            }
+                          });
                         } else if (q.isAlert) {
                           // Create mandate to monitor for better rates
                           if (availableStrategies.length > 0) {
