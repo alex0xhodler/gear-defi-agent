@@ -1,7 +1,7 @@
 import { GearboxSDK } from '@gearbox-protocol/sdk';
 
 let sdkInstance: GearboxSDK | null = null;
-const PLASMA_CHAIN_ID = 146;
+const PLASMA_CHAIN_ID = 9745; // Plasma's actual chain ID
 
 /**
  * Get or initialize Gearbox SDK singleton

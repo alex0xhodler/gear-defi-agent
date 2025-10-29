@@ -44,7 +44,7 @@ export async function queryFarmOpportunities(params: {
 }): Promise<GearboxOpportunity[]> {
   try {
     // Determine chain based on asset
-    const chainId = params.asset.toUpperCase() === 'USDT0' ? 146 : undefined; // 146 = Plasma
+    const chainId = params.asset.toUpperCase() === 'USDT0' ? 9745 : undefined; // 9745 = Plasma
 
     // Initialize SDK for the appropriate chain
     const sdk = await getGearboxSDK(chainId);
