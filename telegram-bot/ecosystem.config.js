@@ -8,7 +8,7 @@ module.exports = {
     {
       name: 'gearbox-telegram-bot',
       script: './index.js',
-      cwd: '/home/ubuntu/gearagent/telegram-bot', // Update to your deployment path
+      cwd: '/home/ubuntu/gear-defi-agent/telegram-bot', // Update to your deployment path
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
