@@ -1303,83 +1303,51 @@
                 throw new Error('Please install MetaMask or another Web3 wallet');
               }
 
-              // Get signer from MetaMask
+              // Get provider and signer from MetaMask
               const provider = new ethers.providers.Web3Provider(window.ethereum);
               const signer = provider.getSigner();
 
-              // Step 1: Get token decimals
-              const decimals = await readContract(wagmiConfig, {
-                address: tokenAddress,
-                abi: [
-                  {
-                    name: 'decimals',
-                    type: 'function',
-                    stateMutability: 'view',
-                    inputs: [],
-                    outputs: [{ type: 'uint8' }],
-                  },
-                ],
-                functionName: 'decimals',
-              });
+              // ERC20 ABI for token interactions
+              const erc20Abi = [
+                'function decimals() view returns (uint8)',
+                'function allowance(address owner, address spender) view returns (uint256)',
+                'function approve(address spender, uint256 amount) returns (bool)',
+              ];
 
+              // Pool ABI for deposit
+              const poolAbi = [
+                'function depositWithReferral(uint256 assets, address receiver, uint256 referralCode) returns (uint256)',
+              ];
+
+              // Step 1: Get token decimals
+              const tokenContract = new ethers.Contract(tokenAddress, erc20Abi, signer);
+              const decimals = await tokenContract.decimals();
               console.log(`💰 Token decimals: ${decimals}`);
 
               // Step 2: Convert amount to wei
-              const amountWei = parseUnits(amount, decimals);
-              console.log(`💰 Amount in wei: ${amountWei}`);
+              const amountWei = ethers.utils.parseUnits(amount, decimals);
+              console.log(`💰 Amount in wei: ${amountWei.toString()}`);
 
               // Step 3: Check existing allowance
-              const currentAllowance = await readContract(wagmiConfig, {
-                address: tokenAddress,
-                abi: [
-                  {
-                    name: 'allowance',
-                    type: 'function',
-                    stateMutability: 'view',
-                    inputs: [
-                      { name: 'owner', type: 'address' },
-                      { name: 'spender', type: 'address' },
-                    ],
-                    outputs: [{ type: 'uint256' }],
-                  },
-                ],
-                functionName: 'allowance',
-                args: [walletAddress, poolAddress],
-              });
+              const currentAllowance = await tokenContract.allowance(walletAddress, poolAddress);
+              console.log(`✅ Current allowance: ${currentAllowance.toString()}`);
 
-              console.log(`✅ Current allowance: ${currentAllowance}`);
-
-              let approvalTxHash;
+              let approvalTx;
 
               // Step 4: Approve if needed (use infinite approval for gas savings)
-              if (currentAllowance < amountWei) {
+              if (currentAllowance.lt(amountWei)) {
                 pushNotification({ title: 'Approval required', body: `Approving ${tokenSymbol} for deposit...` });
                 console.log('🔐 Approving pool for infinite amount...');
 
-                approvalTxHash = await writeContract(wagmiConfig, {
-                  address: tokenAddress,
-                  abi: [
-                    {
-                      name: 'approve',
-                      type: 'function',
-                      stateMutability: 'nonpayable',
-                      inputs: [
-                        { name: 'spender', type: 'address' },
-                        { name: 'amount', type: 'uint256' },
-                      ],
-                      outputs: [{ type: 'bool' }],
-                    },
-                  ],
-                  functionName: 'approve',
-                  args: [poolAddress, maxUint256],
-                });
+                const maxUint256 = ethers.constants.MaxUint256;
+                approvalTx = await tokenContract.approve(poolAddress, maxUint256);
 
-                console.log(`⏳ Approval pending: ${approvalTxHash}`);
-                pushNotification({ title: 'Waiting for approval', body: `Transaction: ${approvalTxHash.slice(0, 10)}...` });
+                console.log(`⏳ Approval pending: ${approvalTx.hash}`);
+                pushNotification({ title: 'Waiting for approval', body: `Transaction: ${approvalTx.hash.slice(0, 10)}...` });
 
                 // Wait for approval confirmation
-                await waitForTransactionReceipt(wagmiConfig, { hash: approvalTxHash });
-                console.log(`✅ Approval confirmed: ${approvalTxHash}`);
+                await approvalTx.wait();
+                console.log(`✅ Approval confirmed: ${approvalTx.hash}`);
                 pushNotification({ title: 'Approval confirmed', body: 'Now depositing...' });
               } else {
                 console.log('✅ Sufficient allowance already exists');
@@ -1389,33 +1357,21 @@
               console.log('💸 Depositing into pool...');
               pushNotification({ title: 'Deposit starting', body: `Depositing ${amount} ${tokenSymbol}...` });
 
-              const depositTxHash = await writeContract(wagmiConfig, {
-                address: poolAddress,
-                abi: [
-                  {
-                    name: 'depositWithReferral',
-                    type: 'function',
-                    stateMutability: 'nonpayable',
-                    inputs: [
-                      { name: 'assets', type: 'uint256' },
-                      { name: 'receiver', type: 'address' },
-                      { name: 'referralCode', type: 'uint256' },
-                    ],
-                    outputs: [{ type: 'uint256' }],
-                  },
-                ],
-                functionName: 'depositWithReferral',
-                args: [amountWei, walletAddress, BigInt(0)],
-              });
+              const poolContract = new ethers.Contract(poolAddress, poolAbi, signer);
+              const depositTx = await poolContract.depositWithReferral(
+                amountWei,
+                walletAddress,
+                0 // referral code
+              );
 
-              setActiveTx(depositTxHash);
+              setActiveTx(depositTx.hash);
               setProposals([]); // clear feed after user commits (clean UX)
-              console.log(`⏳ Deposit pending: ${depositTxHash}`);
-              pushNotification({ title: 'Deposit submitted', body: `Transaction: ${depositTxHash.slice(0, 10)}...` });
+              console.log(`⏳ Deposit pending: ${depositTx.hash}`);
+              pushNotification({ title: 'Deposit submitted', body: `Transaction: ${depositTx.hash.slice(0, 10)}...` });
 
               // Wait for deposit confirmation
-              const receipt = await waitForTransactionReceipt(wagmiConfig, { hash: depositTxHash });
-              console.log(`✅ Deposit confirmed: ${depositTxHash}`);
+              const receipt = await depositTx.wait();
+              console.log(`✅ Deposit confirmed: ${depositTx.hash}`);
 
               // Step 6: Parse shares from Transfer event logs
               const transferEventSignature = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
@@ -1428,8 +1384,8 @@
 
               let shares = '0';
               if (transferLog && transferLog.data) {
-                const sharesWei = BigInt(transferLog.data);
-                shares = formatUnits(sharesWei, decimals);
+                const sharesWei = ethers.BigNumber.from(transferLog.data);
+                shares = ethers.utils.formatUnits(sharesWei, decimals);
                 console.log(`🎉 Shares received: ${shares}`);
               } else {
                 console.warn('⚠️ Could not parse shares from logs');
@@ -1439,9 +1395,9 @@
               const pos = {
                 id: uid('pos'),
                 title: p.title,
-                value: p.deposit,
-                healthFactor: p.healthFactor,
-                txId: depositTxHash,
+                value: depositAmount,
+                healthFactor: '∞', // Passive lending has no liquidation risk
+                txId: depositTx.hash,
                 shares: shares
               };
               setPositions(s=>[pos,...s]);
