@@ -1505,12 +1505,15 @@
 
               // Add success message to chat with link to Gearbox dashboard
               setTimeout(() => {
-                pushMessage('agent', 'Deposit complete! Your position is now active. View and manage your positions on the ', {
+                setMessages(m => [...m, {
+                  id: uid('m'),
+                  from: 'agent',
+                  text: 'Deposit complete! Your position is now active. View and manage your positions on the ',
                   successLink: {
                     url: 'https://app.gearbox.fi/dashboard',
                     text: 'Gearbox Dashboard'
                   }
-                });
+                }]);
               }, 500);
 
               setTimeout(()=> setActiveTx(null), 2000);
