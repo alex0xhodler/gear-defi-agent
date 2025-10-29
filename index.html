@@ -231,10 +231,9 @@
            Chat-first onboarding
            ----------------------------*/
         function ChatPanel(){
-          const { createMandateFromIntent, templates, setProposals, walletAddress, connectWallet, isWalletConnecting, openProposal, approveProposal } = useApp();
-          const [messages, setMessages] = useState([
-            { id: uid('m'), from: 'agent', text: "Hey, I'm Sigma — an agent created by Gearbox masterminds to automate those 'boring DeFi' high-yield lending opportunities with tokens sitting in your wallet.", showWalletConnect: !walletAddress }
-          ]);
+          const { createMandateFromIntent, templates, setProposals, walletAddress, connectWallet, isWalletConnecting, openProposal, approveProposal, chatMessages, pushChatMessage, setChatMessages } = useApp();
+          const messages = chatMessages;
+          const setMessages = setChatMessages;
           const [input, setInput] = useState('');
           const [isLoading, setIsLoading] = useState(false);
           const [apiClient] = useState(() => new window.GearboxAPIClient());
@@ -324,7 +323,7 @@
           ];
 
           function pushMessage(from, text, extraData = {}){
-            setMessages(m => [...m, { id: uid('m'), from, text, ...extraData }]);
+            pushChatMessage(from, text, extraData);
           }
 
           // Auto-trigger wallet analysis after connection
@@ -332,12 +331,12 @@
             window.onWalletConnected = async (address) => {
               // Add natural "connected" confirmation message with delay
               await new Promise(resolve => setTimeout(resolve, 400));
-              pushMessage('agent', `Great! I can see your wallet now (${address.slice(0,6)}...${address.slice(-4)})`);
+              pushMessage('agent', `Perfect! I can see your wallet (${address.slice(0,6)}...${address.slice(-4)}) 🎯`);
 
               // Add natural "thinking" message with loading state
               await new Promise(resolve => setTimeout(resolve, 1000));
               const analyzingId = uid('m');
-              setMessages(m => [...m, { id: analyzingId, from: 'agent', text: 'Let me take a look at what you have...', isLoading: true }]);
+              pushChatMessage('agent', 'Let me check what you\'ve got in there...', { id: analyzingId, isLoading: true });
 
               try {
                 // Call AI to analyze wallet
@@ -369,7 +368,7 @@
                 }
               } catch (error) {
                 setMessages(m => m.filter(msg => msg.id !== analyzingId));
-                pushMessage('agent', `Sorry, I encountered an error analyzing your wallet: ${error.message}`);
+                pushMessage('agent', `Oops! Hit a snag analyzing your wallet: ${error.message}. Let's try again?`);
               }
             };
 
@@ -442,7 +441,7 @@
             } catch (error) {
               console.error('Chat error:', error);
               setMessages(m => m.filter(msg => msg.id !== thinkingId));
-              pushMessage('agent', `Sorry, I encountered an error: ${error.message}. Please try again.`);
+              pushMessage('agent', `Hmm, something went wrong: ${error.message}. Want to give it another shot?`);
             } finally {
               setIsLoading(false);
             }
@@ -665,8 +664,8 @@
                             const depositAmount = m.strategyDetails.depositAmount;
                             if (!depositAmount || depositAmount <= 0) {
                               pushNotification({
-                                title: 'Deposit amount required',
-                                body: 'Please enter a deposit amount to continue.'
+                                title: 'Amount needed 💰',
+                                body: 'How much do you want to deposit?'
                               });
                               return;
                             }
@@ -674,106 +673,20 @@
                             // Clear strategy buttons
                             setAvailableStrategies([]);
 
-                            if (m.strategyDetails.strategyType === 'passive_lending') {
-                              // For passive lending: simple deposit, no health factor calculation
-                              const monthlyReturn = depositAmount * m.strategyDetails.projAPY / 100 / 12;
-
-                              pushMessage('agent', 'Ready to deposit! Review and approve.', {
-                                proposalApproval: {
-                                  ...m.strategyDetails,
-                                  deposit: depositAmount,
-                                  borrow: 0,
-                                  borrowRate: 0,
-                                  healthFactor: null, // No health factor for passive lending
-                                  net30d: Math.round(monthlyReturn * 100) / 100,
-                                  leverage: 1, // No leverage
-                                  liquidationPrice: null
-                                }
-                              });
-                            } else {
-                              // For leveraged strategies: calculate health factor
-                              const currentLeverage = m.strategyDetails.currentLeverage || m.strategyDetails.leverage;
-                              const borrowAmount = depositAmount * (currentLeverage - 1);
-                              const borrowRate = m.strategyDetails.borrowAPY;
-
-                              // Show loading message while calculating health factor
-                              const calcId = uid('m');
-                              pushMessage('agent', 'Calculating position metrics...', { id: calcId, isLoading: true });
-
-                              try {
-                                // Get real liquidation threshold for the collateral token
-                                const tokenSymbol = m.strategyDetails.underlyingSymbol || 'USDC';
-                                const liquidationThreshold = m.strategyDetails.liquidationThresholds?.[tokenSymbol];
-
-                                console.log('📊 Health calculation params:', {
-                                  token: tokenSymbol,
-                                  liquidationThreshold,
-                                  borrowAPY: borrowRate,
-                                  leverage: currentLeverage
-                                });
-
-                                // Call health calculation API with real LT and borrow APY
-                                const response = await fetch('/api/calculate-health', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    collateral_amount: depositAmount,
-                                    collateral_token: tokenSymbol,
-                                    leverage: currentLeverage,
-                                    target_apy: m.strategyDetails.collateralAPY,
-                                    liquidation_threshold: liquidationThreshold,
-                                    borrow_apy: borrowRate
-                                  })
-                                });
-
-                                const healthData = await response.json();
-                                setMessages(msgs => msgs.filter(msg => msg.id !== calcId));
-
-                                const monthlyReturn = (depositAmount * currentLeverage * m.strategyDetails.collateralAPY / 100 / 12) -
-                                                     (borrowAmount * borrowRate / 100 / 12);
-
-                                pushMessage('agent', 'Great choice! Review the details and approve when ready.', {
-                                  proposalApproval: {
-                                    ...m.strategyDetails,
-                                    deposit: depositAmount,
-                                    borrow: borrowAmount,
-                                    borrowRate: borrowRate,
-                                    healthFactor: healthData.healthFactor || 1.8,
-                                    net30d: Math.round(monthlyReturn * 100) / 100,
-                                    leverage: currentLeverage,
-                                    liquidationPrice: healthData.liquidationPrice
-                                  }
-                                });
-                              } catch (error) {
-                                console.error('Health calculation error:', error);
-                                setMessages(msgs => msgs.filter(msg => msg.id !== calcId));
-
-                                const fallbackHealthFactor = 1.8;
-                                const monthlyReturn = (depositAmount * currentLeverage * m.strategyDetails.collateralAPY / 100 / 12) -
-                                                     (borrowAmount * borrowRate / 100 / 12);
-
-                                pushMessage('agent', 'Great choice! Review the details and approve when ready.', {
-                                  proposalApproval: {
-                                    ...m.strategyDetails,
-                                    deposit: depositAmount,
-                                    borrow: borrowAmount,
-                                    borrowRate: borrowRate,
-                                    healthFactor: fallbackHealthFactor,
-                                    net30d: Math.round(monthlyReturn * 100) / 100,
-                                    leverage: currentLeverage
-                                  }
-                                });
-                              }
-                            }
+                            // For all strategy types: directly call approveProposal without intermediate card
+                            // This creates a single-step flow
+                            approveProposal(m.strategyDetails.id, depositAmount);
                           }}
                           disabled={!m.strategyDetails.depositAmount || m.strategyDetails.depositAmount <= 0}
                           className="flex justify-center items-center w-full h-[40px] px-4 py-2 gap-2 flex-shrink-0 rounded-xl bg-brand-pink text-white font-bold hover:bg-[#D10780] disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
                         >
-                          {m.strategyDetails.strategyType === 'passive_lending' ? 'Deposit to Pool' : 'Open Leveraged Position'}
+                          {m.strategyDetails.strategyType === 'passive_lending' ? `Start Earning ${m.strategyDetails.projAPY}% APY` : `Open ${m.strategyDetails.projAPY}% Position`}
                         </button>
+
                       </div>
                     )}
-                    {m.proposalApproval && (
+                    {/* REMOVED: Second confirmation card (m.proposalApproval) - now using single-step flow */}
+                    {false && m.proposalApproval && (
                       <div className="mt-4 bg-bg-secondary border-2 border-border-light rounded-2xl p-6 max-w-xl shadow-xl">
                         <div className="flex items-center justify-between mb-4">
                           <div>
@@ -828,7 +741,7 @@
                             </>
                           ) : (
                             <div className="text-sm text-txt-secondary text-center py-2 bg-green-50 rounded-lg border border-green-200">
-                              ✅ No liquidation risk - your funds are safely deposited in the lending pool
+                              ✅ No liquidation risk — withdraw anytime
                             </div>
                           )}
                           <div className="flex justify-between items-center">
@@ -857,7 +770,7 @@
                           }}
                           className="flex justify-center items-center w-full h-[40px] px-4 py-2 gap-2 flex-shrink-0 rounded-xl bg-brand-green text-white font-bold hover:bg-[#1EB050] transition-all shadow-lg hover:shadow-xl"
                         >
-                          Approve & Sign
+                          {m.proposalApproval.strategyType === 'passive_lending' ? 'Confirm Deposit' : 'Confirm & Open Position'}
                         </button>
                       </div>
                     )}
@@ -879,7 +792,7 @@
                           console.log(`💰 Using stored balance for ${tokenSymbol}:`, userBalance);
 
                           // Show strategy details inline in chat with balance
-                          pushMessage('agent', `Here are the details for ${q.strategy.title}:`, {
+                          pushMessage('agent', `Here's what ${q.strategy.title} looks like:`, {
                             strategyDetails: {
                               ...q.strategy,
                               userBalance: userBalance
@@ -899,7 +812,7 @@
                             if ('Notification' in window && Notification.permission === 'default') {
                               Notification.requestPermission().then(permission => {
                                 if (permission === 'granted') {
-                                  pushMessage('agent', 'Great! Browser notifications enabled. I\'ll alert you when better rates appear.');
+                                  pushMessage('agent', 'Nice! 🔔 Notifications enabled — I\'ll ping you when juicy yields pop up.');
 
                                   // Send a test notification
                                   setTimeout(() => {
@@ -911,7 +824,7 @@
                                     });
                                   }, 500);
                                 } else if (permission === 'denied') {
-                                  pushMessage('agent', 'No worries! I\'ll still track opportunities for you. You can check back here anytime to see updates.');
+                                  pushMessage('agent', 'No problem! I\'ll keep hunting for yields — check back anytime to see what I found.');
                                 }
                               });
                             } else if (Notification.permission === 'granted') {
@@ -941,9 +854,9 @@
                               ? 'I\'ll send you a browser notification'
                               : 'Check back here for updates';
 
-                            pushMessage('agent', `Perfect! I've created a mandate to monitor these opportunities. ${notificationStatus} when rates improve above ${currentBestAPY + 2}% APY or when better strategies appear.`);
+                            pushMessage('agent', `All set! 🎯 I'm watching these opportunities for you. ${notificationStatus} when yields jump above ${currentBestAPY + 2}% or better options appear.`);
                           } else {
-                            pushMessage('agent', 'No strategies to save right now. Search for opportunities first, then you can set alerts on them!');
+                            pushMessage('agent', 'Nothing to save yet! Search for opportunities first, then I can set up alerts for you.');
                           }
                         } else {
                           // Regular text-based quick reply
@@ -1152,8 +1065,15 @@
           const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
           const [walletAddress, setWalletAddress] = useState(null);
           const [isWalletConnecting, setIsWalletConnecting] = useState(false);
+          const [chatMessages, setChatMessages] = useState([
+            { id: uid('m'), from: 'agent', text: "Hey! I\'m Sigma 👋 — your AI yield hunter from Gearbox. I find high-APY opportunities for idle tokens in your wallet so you don\'t have to. Let\'s put that crypto to work!", showWalletConnect: !walletAddress }
+          ]);
 
           function pushNotification(n){ const note = { id: uid('n'), ...n }; setNotifications(s=>[note,...s]); setTimeout(()=>setNotifications(s=>s.filter(x=>x.id!==note.id)),7000); }
+
+          function pushChatMessage(from, text, extraData = {}){
+            setChatMessages(m => [...m, { id: uid('m'), from, text, ...extraData }]);
+          }
 
           // Wallet connection using window.ethereum (MetaMask)
           async function connectWallet() {
@@ -1169,8 +1089,8 @@
               setWalletAddress(address);
 
               pushNotification({
-                title: 'Wallet connected',
-                body: `Connected: ${address.slice(0, 6)}...${address.slice(-4)}`
+                title: 'Wallet connected! 🔗',
+                body: `${address.slice(0, 6)}...${address.slice(-4)} — Let's find you some yields`
               });
 
               // Trigger auto-analysis after successful connection
@@ -1179,7 +1099,7 @@
               }
             } catch (error) {
               console.error('Wallet connection error:', error);
-              pushNotification({ title: 'Connection failed', body: 'Could not connect to wallet.' });
+              pushNotification({ title: 'Connection failed 😕', body: 'Couldn\'t connect to your wallet. Try again?' });
             } finally {
               setIsWalletConnecting(false);
             }
@@ -1187,7 +1107,7 @@
 
           function disconnectWallet() {
             setWalletAddress(null);
-            pushNotification({ title: 'Wallet disconnected', body: 'Your wallet has been disconnected.' });
+            pushNotification({ title: 'Wallet disconnected 👋', body: 'See you next time!' });
           }
 
           // Auto-connect if already authorized
@@ -1225,7 +1145,7 @@
             };
             setMandates(s=>[m,...s]);
             setActiveMandate(m);
-            pushNotification({ title: 'Mandate drafted', body: `${m.asset} — ${m.risk}` });
+            pushNotification({ title: 'Mandate created! 🎯', body: `${m.asset} strategy — ${m.risk} risk` });
 
             // NOTE: Proposals now come from real Gearbox SDK via API
             // generateMockProposals(m) is no longer needed
@@ -1234,7 +1154,7 @@
           async function signMandateWithWallet(id){
             await new Promise(r=>setTimeout(r,700));
             setMandates(s=>s.map(m=> m.id===id? {...m, signed:true, signedAt:Date.now() }: m));
-            pushNotification({ title: 'Mandate signed', body: 'Agent will monitor and propose.' });
+            pushNotification({ title: 'Mandate signed! ✅', body: 'I\'ll keep watch and find you the best yields' });
           }
 
           function generateMockProposals(mandate){
@@ -1256,7 +1176,7 @@
               const curated = pool.slice(0,3);
               setProposals(curated);
               setIsScanning(false);
-              pushNotification({ title: 'Opportunities ready', body: `Found ${curated.length} matches for your mandate.` });
+              pushNotification({ title: 'Found some gems! 💎', body: `${curated.length} high-yield ${curated.length === 1 ? 'opportunity' : 'opportunities'} matching your criteria` });
             }, 2000); // Simulate scanning delay
           }
 
@@ -1268,7 +1188,7 @@
 
             // Validate wallet connection
             if (!walletAddress) {
-              pushNotification({ title: 'Wallet not connected', body: 'Please connect your wallet first.' });
+              pushNotification({ title: 'Wallet needed 🔗', body: 'Connect your wallet to continue' });
               return;
             }
 
@@ -1500,7 +1420,15 @@
               setPositions(s=>[pos,...s]);
               pushNotification({
                 title: 'Deposit successful!',
-                body: `Received ${parseFloat(shares).toFixed(4)} pool tokens. View on Gearbox: https://app.gearbox.fi/dashboard`
+                body: `Received ${parseFloat(shares).toFixed(4)} pool tokens.`
+              });
+
+              // Add success message to chat with clickable dashboard link
+              pushChatMessage('agent', 'You\'re in! 🎉 Your position is now earning. Track your yields on the', {
+                successLink: {
+                  url: 'https://app.gearbox.fi/dashboard',
+                  text: 'Gearbox Dashboard →'
+                }
               });
 
               setTimeout(()=> setActiveTx(null), 2000);
@@ -1535,8 +1463,11 @@
             connectWallet,
             disconnectWallet,
             isWalletConnecting,
-            setProposals
-          }), [templates, mandates, proposals, positions, notifications, isScanning, activeMandate, walletAddress, isWalletConnecting]);
+            setProposals,
+            chatMessages,
+            pushChatMessage,
+            setChatMessages
+          }), [templates, mandates, proposals, positions, notifications, isScanning, activeMandate, walletAddress, isWalletConnecting, chatMessages]);
 
           return (
             <AppContext.Provider value={value}>
@@ -1632,7 +1563,8 @@
                     <div className="space-y-4">
                       {activeTx && <TxProgressPanel txId={activeTx} />}
 
-                      {positions.length > 0 && (
+                      {/* HIDDEN: Active Positions section with mock data */}
+                      {false && positions.length > 0 && (
                         <div className="rounded-2xl bg-bg-secondary p-4 shadow-sm">
                           <div className="flex items-center justify-between mb-3">
                             <div className="text-sm font-semibold">Active Positions</div>
