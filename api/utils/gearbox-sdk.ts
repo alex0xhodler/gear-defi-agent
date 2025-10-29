@@ -40,98 +40,137 @@ export async function getGearboxSDK(chainId?: number): Promise<GearboxSDK> {
 }
 
 /**
- * Create mock SDK for Plasma chain with USDT0 pool
+ * Create mock SDK for Plasma chain with multiple USDT0 pools
  * Returns a minimal SDK-compatible object with REAL on-chain data
  */
 async function createPlasmaSDK(): Promise<any> {
   const USDT0_ADDRESS = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb';
-  const POOL_ADDRESS = '0x76309a9a56309104518847bba321c261b7b4a43f';
   const PLASMA_RPC = 'https://rpc.plasma.to';
 
-  // Fetch real supply rate from the pool contract
-  let supplyRate = 2551000000000000000000000000n; // Default: 25.51% APY (from UI)
-  let expectedLiquidity = 1000000000000n; // Default: 1M USDT0
+  // Define all Plasma pools for USDT0
+  const plasmaPools = [
+    {
+      name: 'Invariant Group',
+      address: '0x76309a9a56309104518847bba321c261b7b4a43f',
+      defaultSupplyRate: 2551000000000000000000000000n, // 25.51% APY
+      defaultLiquidity: 1000000000000n, // 1M USDT0
+    },
+    {
+      name: 'Edge UltraYield',
+      address: '0x53e4e9b8766969c43895839cc9c673bb6bc8ac97',
+      defaultSupplyRate: 2000000000000000000000000000n, // 20% APY (placeholder)
+      defaultLiquidity: 500000000000n, // 500K USDT0 (placeholder)
+    },
+    {
+      name: 'Hyperithm',
+      address: '0xb74760fd26400030620027dd29d19d74d514700e',
+      defaultSupplyRate: 1800000000000000000000000000n, // 18% APY (placeholder)
+      defaultLiquidity: 300000000000n, // 300K USDT0 (placeholder)
+    },
+  ];
 
-  try {
-    // Use fetch to call RPC
-    const response = await fetch(PLASMA_RPC, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_call',
-        params: [
-          {
-            to: POOL_ADDRESS,
-            data: '0x2749c8d6', // supplyRate() function selector
-          },
-          'latest',
-        ],
-        id: 1,
-      }),
-    });
+  // Fetch real data for all pools in parallel
+  const poolDataPromises = plasmaPools.map(async (pool) => {
+    let supplyRate = pool.defaultSupplyRate;
+    let expectedLiquidity = pool.defaultLiquidity;
 
-    const data = (await response.json()) as any;
-    if (data.result) {
-      supplyRate = BigInt(data.result);
-      console.log(`✅ Fetched real Plasma pool supply rate: ${supplyRate} (${(Number(supplyRate) / 1e25).toFixed(2)}% APY)`);
+    try {
+      // Fetch supply rate
+      const response = await fetch(PLASMA_RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_call',
+          params: [
+            {
+              to: pool.address,
+              data: '0x2749c8d6', // supplyRate() function selector
+            },
+            'latest',
+          ],
+          id: 1,
+        }),
+      });
+
+      const data = (await response.json()) as any;
+      if (data.result && data.result !== '0x') {
+        supplyRate = BigInt(data.result);
+        console.log(`✅ ${pool.name}: Fetched supply rate ${(Number(supplyRate) / 1e25).toFixed(2)}% APY`);
+      } else {
+        console.log(`⚠️ ${pool.name}: Using default supply rate ${(Number(supplyRate) / 1e25).toFixed(2)}% APY`);
+      }
+
+      // Fetch expected liquidity
+      const liquidityResponse = await fetch(PLASMA_RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_call',
+          params: [
+            {
+              to: pool.address,
+              data: '0x4b2ba0dd', // expectedLiquidity() function selector
+            },
+            'latest',
+          ],
+          id: 2,
+        }),
+      });
+
+      const liquidityData = (await liquidityResponse.json()) as any;
+      if (liquidityData.result && liquidityData.result !== '0x') {
+        expectedLiquidity = BigInt(liquidityData.result);
+        console.log(`✅ ${pool.name}: Fetched liquidity $${(Number(expectedLiquidity) / 1e6).toFixed(0)}`);
+      } else {
+        console.log(`⚠️ ${pool.name}: Using default liquidity $${(Number(expectedLiquidity) / 1e6).toFixed(0)}`);
+      }
+    } catch (error) {
+      console.error(`⚠️ ${pool.name}: Failed to fetch data, using defaults:`, error);
     }
 
-    // Fetch expected liquidity
-    const liquidityResponse = await fetch(PLASMA_RPC, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_call',
-        params: [
-          {
-            to: POOL_ADDRESS,
-            data: '0x4b2ba0dd', // expectedLiquidity() function selector
-          },
-          'latest',
-        ],
-        id: 2,
-      }),
-    });
+    return {
+      name: pool.name,
+      address: pool.address,
+      supplyRate,
+      expectedLiquidity,
+    };
+  });
 
-    const liquidityData = (await liquidityResponse.json()) as any;
-    if (liquidityData.result) {
-      expectedLiquidity = BigInt(liquidityData.result);
-      console.log(`✅ Fetched real Plasma pool liquidity: ${expectedLiquidity} (${(Number(expectedLiquidity) / 1e6).toFixed(0)} USDT0)`);
-    }
-  } catch (error) {
-    console.error('⚠️ Failed to fetch real Plasma pool data, using defaults:', error);
-  }
+  const poolsData = await Promise.all(poolDataPromises);
+
+  // Create market objects for each pool
+  const markets = poolsData.map((poolData) => ({
+    pool: {
+      pool: {
+        address: poolData.address,
+        underlying: USDT0_ADDRESS,
+        supplyRate: poolData.supplyRate,
+        expectedLiquidity: poolData.expectedLiquidity,
+      },
+    },
+    creditManagers: [], // No credit managers on Plasma (lending only)
+    priceOracle: {
+      // Mock price oracle for Plasma
+      async mainPrice(token: string) {
+        if (token.toLowerCase() === USDT0_ADDRESS.toLowerCase()) {
+          return 100000000n; // $1.00 (8 decimals)
+        }
+        if (token.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
+          return 300000000000n; // $3000 for ETH (8 decimals)
+        }
+        return 100000000n; // Default to $1
+      },
+    },
+  }));
+
+  console.log(`✅ Created Plasma SDK with ${markets.length} USDT0 pools`);
 
   return {
     networkType: 'Plasma',
     marketRegister: {
-      markets: [
-        {
-          pool: {
-            pool: {
-              address: POOL_ADDRESS,
-              underlying: USDT0_ADDRESS,
-              supplyRate, // Real on-chain supply rate
-              expectedLiquidity, // Real on-chain liquidity
-            },
-          },
-          creditManagers: [], // No credit managers on Plasma (lending only)
-          priceOracle: {
-            // Mock price oracle for Plasma
-            async mainPrice(token: string) {
-              if (token.toLowerCase() === USDT0_ADDRESS.toLowerCase()) {
-                return 100000000n; // $1.00 (8 decimals)
-              }
-              if (token.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
-                return 300000000000n; // $3000 for ETH (8 decimals)
-              }
-              return 100000000n; // Default to $1
-            },
-          },
-        },
-      ],
+      markets,
     },
     tokensMeta: new Map([
       [

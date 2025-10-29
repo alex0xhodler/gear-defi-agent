@@ -88,9 +88,20 @@ export async function queryFarmOpportunities(params: {
       // Calculate TVL (convert from wei to USD)
       const tvl = Number(market.pool.pool.expectedLiquidity) / Math.pow(10, poolDecimals);
 
-      // Create friendly pool name (e.g., "GHO V3", "USDC V3")
-      const poolVersion = "V3"; // Gearbox V3
-      const friendlyTitle = `${underlyingSymbol} ${poolVersion}`;
+      // Map pool addresses to friendly names (for Plasma pools)
+      const poolNameMap: Record<string, string> = {
+        '0x76309a9a56309104518847bba321c261b7b4a43f': 'Invariant Group',
+        '0x53e4e9b8766969c43895839cc9c673bb6bc8ac97': 'Edge UltraYield',
+        '0xb74760fd26400030620027dd29d19d74d514700e': 'Hyperithm',
+      };
+
+      // Create friendly pool name
+      // For Plasma: Use custom pool names (e.g., "Invariant Group", "Edge UltraYield")
+      // For mainnet: Use "TOKEN V3" (e.g., "GHO V3", "USDC V3")
+      const poolAddress = market.pool.pool.address.toLowerCase();
+      const friendlyTitle = poolNameMap[poolAddress]
+        ? `${underlyingSymbol} ${poolNameMap[poolAddress]}`
+        : `${underlyingSymbol} V3`;
 
       // 1. ALWAYS create passive lending opportunity
       opportunities.push({

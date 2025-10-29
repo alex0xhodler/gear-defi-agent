@@ -1152,7 +1152,7 @@
           const [walletAddress, setWalletAddress] = useState(null);
           const [isWalletConnecting, setIsWalletConnecting] = useState(false);
           const [chatMessages, setChatMessages] = useState([
-            { id: uid('m'), from: 'agent', text: "Hey! I\'m Sigma 👋 — your AI yield hunter from Gearbox. I find high-APY opportunities for idle tokens in your wallet so you don\'t have to. Let\'s put that crypto to work!", showWalletConnect: !walletAddress }
+            { id: uid('m'), from: 'agent', text: "Hey! I\'m Sigma 👋 — your yield agent from Gearbox (0 hacks, 6 audits since 2021). I find high-APY opportunities for your idle tokens. Ready to earn?", showWalletConnect: !walletAddress }
           ]);
 
           function pushNotification(n){ const note = { id: uid('n'), ...n }; setNotifications(s=>[note,...s]); setTimeout(()=>setNotifications(s=>s.filter(x=>x.id!==note.id)),7000); }
