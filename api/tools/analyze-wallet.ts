@@ -248,6 +248,7 @@ export async function analyzeWalletHoldings(params: {
       tokens: [],
       gearboxCompatible: [],
       recommendations: ['Unable to fetch wallet data. Please try again or connect wallet.'],
+      suggestedSearchTokens: [],
     };
   }
 }
