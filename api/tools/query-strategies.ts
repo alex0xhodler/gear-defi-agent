@@ -20,6 +20,7 @@ export interface GearboxOpportunity {
   poolAddress: string;
   creditManagerAddress: string;
   underlyingToken: string;
+  underlyingSymbol: string; // Token symbol (e.g., 'GHO', 'USDC')
   supportedCollateral: string[];
   liquidationThreshold: number; // LTV as percentage
 
