@@ -1364,6 +1364,23 @@
               const provider = new ethers.providers.Web3Provider(window.ethereum);
               const signer = provider.getSigner();
 
+              // Verify we're on the correct network now
+              const finalNetwork = await provider.getNetwork();
+              console.log(`✅ Final network after switch: ${finalNetwork.chainId}`);
+
+              if (finalNetwork.chainId !== requiredChainId) {
+                throw new Error(`Network switch failed. Expected chain ${requiredChainId}, but on chain ${finalNetwork.chainId}. Please manually switch to ${requiredChainId === PLASMA_CHAIN_ID ? 'Plasma' : 'Ethereum'} network.`);
+              }
+
+              // Log transaction details for debugging
+              console.log('📝 Transaction details:', {
+                tokenAddress,
+                poolAddress,
+                tokenSymbol,
+                chainId: finalNetwork.chainId,
+                userAddress: walletAddress
+              });
+
               // ERC20 ABI for token interactions
               const erc20Abi = [
                 'function decimals() view returns (uint8)',
@@ -1377,7 +1394,8 @@
               ];
 
               // Step 1: Get token decimals
-              const tokenContract = new ethers.Contract(tokenAddress, erc20Abi, signer);
+              console.log(`🔍 Calling decimals() on token ${tokenAddress}...`);
+              const tokenContract = new ethers.Contract(tokenAddress, erc20Abi, provider); // Use provider first for read-only
               const decimals = await tokenContract.decimals();
               console.log(`💰 Token decimals: ${decimals}`);
 
@@ -1396,8 +1414,10 @@
                 pushNotification({ title: 'Approval required', body: `Approving ${tokenSymbol} for deposit...` });
                 console.log('🔐 Approving pool for infinite amount...');
 
+                // Connect signer for write operations
+                const tokenContractWithSigner = tokenContract.connect(signer);
                 const maxUint256 = ethers.constants.MaxUint256;
-                approvalTx = await tokenContract.approve(poolAddress, maxUint256);
+                approvalTx = await tokenContractWithSigner.approve(poolAddress, maxUint256);
 
                 console.log(`⏳ Approval pending: ${approvalTx.hash}`);
                 pushNotification({ title: 'Waiting for approval', body: `Transaction: ${approvalTx.hash.slice(0, 10)}...` });
