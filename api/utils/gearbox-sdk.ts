@@ -41,101 +41,80 @@ export async function getGearboxSDK(chainId?: number): Promise<GearboxSDK> {
 
 /**
  * Create mock SDK for Plasma chain with multiple USDT0 pools
- * Returns a minimal SDK-compatible object with REAL on-chain data
+ * Returns a minimal SDK-compatible object with REAL on-chain data fetched via viem
  */
 async function createPlasmaSDK(): Promise<any> {
   const USDT0_ADDRESS = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb';
-  const PLASMA_RPC = 'https://rpc.plasma.to';
+
+  // Import viem dynamically (ESM module)
+  const { createPublicClient, http, defineChain } = await import('viem');
+
+  // Define Plasma chain
+  const plasma = defineChain({
+    id: 9745,
+    name: 'Plasma',
+    network: 'plasma',
+    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+    rpcUrls: {
+      default: { http: ['https://rpc.plasma.to'] },
+      public: { http: ['https://rpc.plasma.to'] }
+    }
+  });
+
+  // Create viem client
+  const client = createPublicClient({
+    chain: plasma,
+    transport: http('https://rpc.plasma.to')
+  });
+
+  // Pool ABI (minimal)
+  const poolABI = [
+    { name: 'supplyRate', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function', inputs: [] },
+    { name: 'expectedLiquidity', outputs: [{ type: 'uint256' }], stateMutability: 'view', type: 'function', inputs: [] }
+  ] as const;
 
   // Define all Plasma pools for USDT0
   const plasmaPools = [
-    {
-      name: 'Invariant Group',
-      address: '0x76309a9a56309104518847bba321c261b7b4a43f',
-      defaultSupplyRate: 864000000000000000000000n, // 8.64% APY (realistic placeholder based on incentives)
-      defaultLiquidity: 1000000000000n, // 1M USDT0
-    },
-    {
-      name: 'Edge UltraYield',
-      address: '0x53e4e9b8766969c43895839cc9c673bb6bc8ac97',
-      defaultSupplyRate: 750000000000000000000000n, // 7.5% APY (realistic placeholder)
-      defaultLiquidity: 500000000000n, // 500K USDT0
-    },
-    {
-      name: 'Hyperithm',
-      address: '0xb74760fd26400030620027dd29d19d74d514700e',
-      defaultSupplyRate: 680000000000000000000000n, // 6.8% APY (realistic placeholder)
-      defaultLiquidity: 300000000000n, // 300K USDT0
-    },
+    { name: 'Invariant Group', address: '0x76309a9a56309104518847bba321c261b7b4a43f' as `0x${string}` },
+    { name: 'Edge UltraYield', address: '0x53e4e9b8766969c43895839cc9c673bb6bc8ac97' as `0x${string}` },
+    { name: 'Hyperithm', address: '0xb74760fd26400030620027dd29d19d74d514700e' as `0x${string}` }
   ];
 
   // Fetch real data for all pools in parallel
   const poolDataPromises = plasmaPools.map(async (pool) => {
-    let supplyRate = pool.defaultSupplyRate;
-    let expectedLiquidity = pool.defaultLiquidity;
-
     try {
-      // Fetch supply rate
-      const response = await fetch(PLASMA_RPC, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method: 'eth_call',
-          params: [
-            {
-              to: pool.address,
-              data: '0x2749c8d6', // supplyRate() function selector
-            },
-            'latest',
-          ],
-          id: 1,
+      // Fetch both values in parallel
+      const [supplyRate, expectedLiquidity] = await Promise.all([
+        client.readContract({
+          address: pool.address,
+          abi: poolABI,
+          functionName: 'supplyRate'
         }),
-      });
+        client.readContract({
+          address: pool.address,
+          abi: poolABI,
+          functionName: 'expectedLiquidity'
+        })
+      ]);
 
-      const data = (await response.json()) as any;
-      if (data.result && data.result !== '0x') {
-        supplyRate = BigInt(data.result);
-        console.log(`✅ ${pool.name}: Fetched supply rate ${(Number(supplyRate) / 1e25).toFixed(2)}% APY`);
-      } else {
-        console.log(`⚠️ ${pool.name}: Using default supply rate ${(Number(supplyRate) / 1e25).toFixed(2)}% APY`);
-      }
+      console.log(`✅ ${pool.name}: ${(Number(supplyRate) / 1e25).toFixed(2)}% APY, $${(Number(expectedLiquidity) / 1e6).toFixed(0)} TVL`);
 
-      // Fetch expected liquidity
-      const liquidityResponse = await fetch(PLASMA_RPC, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          method: 'eth_call',
-          params: [
-            {
-              to: pool.address,
-              data: '0x4b2ba0dd', // expectedLiquidity() function selector
-            },
-            'latest',
-          ],
-          id: 2,
-        }),
-      });
-
-      const liquidityData = (await liquidityResponse.json()) as any;
-      if (liquidityData.result && liquidityData.result !== '0x') {
-        expectedLiquidity = BigInt(liquidityData.result);
-        console.log(`✅ ${pool.name}: Fetched liquidity $${(Number(expectedLiquidity) / 1e6).toFixed(0)}`);
-      } else {
-        console.log(`⚠️ ${pool.name}: Using default liquidity $${(Number(expectedLiquidity) / 1e6).toFixed(0)}`);
-      }
+      return {
+        name: pool.name,
+        address: pool.address,
+        supplyRate,
+        expectedLiquidity,
+      };
     } catch (error) {
-      console.error(`⚠️ ${pool.name}: Failed to fetch data, using defaults:`, error);
+      console.error(`❌ ${pool.name}: Failed to fetch real data:`, error);
+      // Return zero values if fetch fails
+      return {
+        name: pool.name,
+        address: pool.address,
+        supplyRate: 0n,
+        expectedLiquidity: 0n,
+      };
     }
-
-    return {
-      name: pool.name,
-      address: pool.address,
-      supplyRate,
-      expectedLiquidity,
-    };
   });
 
   const poolsData = await Promise.all(poolDataPromises);
