@@ -4,19 +4,23 @@
   "description": "AI-powered Gearbox Strategy Agent with Google Gemini and x402 payment protocol",
   "type": "module",
   "scripts": {
-    "dev": "vercel dev",
     "build": "tsc",
     "deploy": "vercel --prod",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@gearbox-protocol/sdk": "^10.2.2",
     "@google/generative-ai": "^0.21.0",
     "@rainbow-me/rainbowkit": "^2.2.9",
     "@tanstack/react-query": "^5.90.5",
+    "bn.js": "^5.2.2",
+    "date-fns": "^4.1.0",
+    "decimal.js-light": "^2.5.1",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.0",
     "viem": "^2.38.5",
-    "wagmi": "^2.19.0"
+    "wagmi": "^2.19.0",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",

@@ -1,7 +1,10 @@
 // Tool implementation: query_farm_opportunities
-// Fetches real yield data from DefiLlama and filters for Gearbox Protocol pools ONLY
+// Fetches real yield data from Gearbox Protocol SDK
 
-export interface FarmOpportunity {
+import { getGearboxSDK } from '../utils/gearbox-sdk.js';
+
+export interface GearboxOpportunity {
+  // Core fields
   id: string;
   title: string;
   chain: string;
@@ -12,34 +15,18 @@ export interface FarmOpportunity {
   risk: 'low' | 'medium' | 'high';
   leverage: number;
   estimatedGas: number;
-}
 
-// Risk scoring based on protocol and TVL
-function assessRisk(pool: any): 'low' | 'medium' | 'high' {
-  const { tvlUsd, apy, project } = pool;
+  // Gearbox-specific fields
+  poolAddress: string;
+  creditManagerAddress: string;
+  underlyingToken: string;
+  supportedCollateral: string[];
+  liquidationThreshold: number; // LTV as percentage
 
-  // Low risk: Established protocols with high TVL
-  const lowRiskProtocols = ['curve', 'convex', 'aave', 'lido'];
-  if (lowRiskProtocols.includes(project.toLowerCase()) && tvlUsd > 50_000_000 && apy < 15) {
-    return 'low';
-  }
-
-  // High risk: High APY or low TVL
-  if (apy > 30 || tvlUsd < 1_000_000) {
-    return 'high';
-  }
-
-  return 'medium';
-}
-
-// Estimate gas costs based on chain and protocol
-function estimateGas(chain: string): number {
-  const gasEstimates: Record<string, number> = {
-    Ethereum: 15,
-    Arbitrum: 2,
-    Base: 1,
-  };
-  return gasEstimates[chain] || 10;
+  // Leverage calculation metadata
+  minLeverage: number;
+  maxLeverage: number;
+  borrowAPY: number; // For recalculating projAPY on leverage change
 }
 
 export async function queryFarmOpportunities(params: {
@@ -47,137 +34,152 @@ export async function queryFarmOpportunities(params: {
   min_apy?: number;
   risk_tolerance?: 'low' | 'medium' | 'high';
   max_leverage?: number;
-}): Promise<FarmOpportunity[]> {
+}): Promise<GearboxOpportunity[]> {
   try {
-    // Fetch yield data from DefiLlama
-    const response = await fetch('https://yields.llama.fi/pools', {
-      headers: {
-        'Accept': 'application/json',
-      },
+    // Initialize SDK
+    const sdk = await getGearboxSDK();
+    const markets = sdk.marketRegister.markets;
+
+    console.log('🔍 Querying Gearbox markets for:', params.asset);
+
+    // Step 1: Filter markets by asset - ONLY match pool underlying token
+    const relevantMarkets = markets.filter(market => {
+      // Check if pool underlying matches (e.g., USDC pool, WETH pool)
+      const poolToken = sdk.tokensMeta.get(market.pool.pool.underlying);
+      const poolSymbol = poolToken?.symbol || '';
+
+      // Match the pool's underlying token to the requested asset
+      return poolSymbol.toUpperCase().includes(params.asset.toUpperCase());
     });
 
-    if (!response.ok) {
-      throw new Error(`DefiLlama API error: ${response.status}`);
+    console.log(`✅ Found ${relevantMarkets.length} relevant markets`);
+
+    // Step 2: Transform markets into opportunities
+    const opportunities: GearboxOpportunity[] = [];
+
+    for (const market of relevantMarkets) {
+      const poolToken = sdk.tokensMeta.get(market.pool.pool.underlying);
+      const underlyingSymbol = poolToken?.symbol || 'Unknown';
+
+      for (const cm of market.creditManagers) {
+        // Calculate base supply APY (27 decimals)
+        const supplyAPY = Number(market.pool.pool.supplyRate) / 1e25;
+
+        // Get quota rate for main collateral token (additional yield)
+        const mainCollateral = cm.creditManager.collateralTokens[0];
+        const quotaData = market.pool.pqk.quotas.get(mainCollateral);
+        const quotaRate = quotaData?.rate ? Number(quotaData.rate) / 10000 : 0;
+
+        // Borrow APY = supply + quota
+        const borrowAPY = supplyAPY + quotaRate;
+
+        // Calculate leverage range
+        const ltValues = Object.values(cm.creditManager.liquidationThresholds);
+        const maxLT = Math.max(...ltValues) / 10000;
+        const minLeverage = 1; // 1x = no leverage
+        const absoluteMaxLeverage = Math.floor(1 / (1 - maxLT * 0.8)); // 80% of max for safety
+        const maxLeverage = Math.min(absoluteMaxLeverage, 10); // Cap at 10x
+
+        // Default leverage: use user's preference or optimal (safe) leverage
+        const defaultLeverage = Math.min(
+          params.max_leverage || maxLeverage,
+          maxLeverage
+        );
+
+        // Projected APY with leverage: (supplyAPY * leverage) - (borrowAPY * (leverage - 1))
+        const projAPY = supplyAPY * defaultLeverage - borrowAPY * (defaultLeverage - 1);
+
+        // Filter by minimum APY
+        if (projAPY < (params.min_apy || 0)) {
+          continue;
+        }
+
+        // Calculate TVL (convert from wei to USD)
+        const poolDecimals = poolToken?.decimals || 6;
+        const tvl = Number(market.pool.pool.expectedLiquidity) / Math.pow(10, poolDecimals);
+
+        // Assess risk
+        const risk = assessRisk(projAPY, tvl, defaultLeverage);
+
+        // Filter by risk tolerance
+        if (!matchesRiskTolerance(risk, params.risk_tolerance)) {
+          continue;
+        }
+
+        // Get supported collateral symbols
+        const supportedCollateral = cm.creditManager.collateralTokens.map((addr: string) => {
+          const token = sdk.tokensMeta.get(addr);
+          return token?.symbol || addr;
+        });
+
+        opportunities.push({
+          id: `${market.pool.pool.address}-${cm.creditManager.address}`,
+          title: `${underlyingSymbol} ${cm.name || 'Credit Manager'}`,
+          chain: sdk.networkType, // 'Mainnet', 'Arbitrum', etc.
+          strategy: `Gearbox ${cm.name || 'Farming'}`,
+          projAPY: Number(projAPY.toFixed(2)),
+          collateralAPY: Number(supplyAPY.toFixed(2)),
+          tvl: Number(tvl.toFixed(0)),
+          risk,
+          leverage: defaultLeverage,
+          estimatedGas: estimateGas(sdk.networkType),
+
+          // Gearbox-specific
+          poolAddress: market.pool.pool.address,
+          creditManagerAddress: cm.creditManager.address,
+          underlyingToken: market.pool.pool.underlying,
+          supportedCollateral,
+          liquidationThreshold: Number((maxLT * 100).toFixed(1)),
+
+          // Leverage calculation metadata
+          minLeverage,
+          maxLeverage,
+          borrowAPY: Number(borrowAPY.toFixed(2)),
+        });
+      }
     }
 
-    const data: any = await response.json();
+    // Sort by APY and return top 3
+    const sorted = opportunities
+      .sort((a, b) => b.projAPY - a.projAPY)
+      .slice(0, 3);
 
-    // Filter for Gearbox Protocol pools ONLY (not Gearbox-compatible protocols)
-    const minAPY = params.min_apy || 0;
-    const maxRisk = params.risk_tolerance || 'high';
-    const maxLeverage = params.max_leverage || 10;
+    console.log(`📊 Returning ${sorted.length} opportunities`);
 
-    const filtered = data.data
-      .filter((pool: any) => {
-        const matchesGearbox = pool.project?.toLowerCase() === 'gearbox';
-        const matchesAsset = pool.symbol?.toLowerCase().includes(params.asset.toLowerCase());
-        const matchesAPY = (pool.apy || 0) >= minAPY;
-        const hasReasonableTVL = pool.tvlUsd > 100_000; // Minimum $100k TVL
+    return sorted;
 
-        return matchesGearbox && matchesAsset && matchesAPY && hasReasonableTVL;
-      })
-      .filter((pool: any) => {
-        const risk = assessRisk(pool);
-        if (maxRisk === 'low') return risk === 'low';
-        if (maxRisk === 'medium') return risk === 'low' || risk === 'medium';
-        return true; // 'high' tolerance accepts all
-      })
-      .sort((a: any, b: any) => b.apy - a.apy) // Sort by APY descending
-      .slice(0, 3) // Limit to top 3 as per UX design
-      .map((pool: any) => {
-        const risk = assessRisk(pool);
-        const baseAPY = pool.apy || 0;
-        const leverage = Math.min(calculateOptimalLeverage(baseAPY, risk), maxLeverage);
-
-        return {
-          id: pool.pool,
-          title: `${pool.symbol} ${pool.project}`,
-          chain: pool.chain,
-          strategy: `${pool.project} ${pool.category || 'Yield'}`,
-          projAPY: baseAPY,
-          collateralAPY: pool.apyBase || baseAPY * 0.3,
-          tvl: pool.tvlUsd,
-          risk,
-          leverage,
-          estimatedGas: estimateGas(pool.chain),
-        };
-      });
-
-    return filtered.length > 0 ? filtered : generateFallbackStrategies(params.asset);
   } catch (error) {
-    console.error('Error fetching farm opportunities:', error);
-    // Return fallback strategies if API fails
-    return generateFallbackStrategies(params.asset);
+    console.error('❌ Error querying Gearbox SDK:', error);
+
+    // Return empty array instead of fallback
+    return [];
   }
 }
 
-// Calculate optimal leverage based on APY and risk
-function calculateOptimalLeverage(apy: number, risk: 'low' | 'medium' | 'high'): number {
-  // Conservative leverage recommendations
-  if (risk === 'low') return Math.min(3, 1 + apy / 15); // Max 3x for low risk
-  if (risk === 'medium') return Math.min(5, 1 + apy / 10); // Max 5x for medium risk
-  return Math.min(8, 1 + apy / 8); // Max 8x for high risk
+function assessRisk(apy: number, tvl: number, leverage: number): 'low' | 'medium' | 'high' {
+  // High risk: >5x leverage or >30% APY
+  if (leverage > 5 || apy > 30) return 'high';
+
+  // Medium risk: 3-5x leverage or 20-30% APY or low TVL
+  if (leverage > 3 || apy > 20 || tvl < 10_000_000) return 'medium';
+
+  // Low risk: everything else
+  return 'low';
 }
 
-// Fallback strategies when DefiLlama API fails or no results
-function generateFallbackStrategies(asset: string): FarmOpportunity[] {
-  const strategies: Record<string, FarmOpportunity[]> = {
-    USDC: [
-      {
-        id: 'curve-usdc-pool-1',
-        title: 'USDC Curve 3pool',
-        chain: 'Ethereum',
-        strategy: 'Curve Stablecoin Pool',
-        projAPY: 6.8,
-        collateralAPY: 2.5,
-        tvl: 450_000_000,
-        risk: 'low',
-        leverage: 2,
-        estimatedGas: 15,
-      },
-      {
-        id: 'yearn-usdc-vault-1',
-        title: 'USDC Yearn Vault',
-        chain: 'Ethereum',
-        strategy: 'Yearn Auto-compounding',
-        projAPY: 8.2,
-        collateralAPY: 3.1,
-        tvl: 180_000_000,
-        risk: 'low',
-        leverage: 2.5,
-        estimatedGas: 12,
-      },
-    ],
-    WETH: [
-      {
-        id: 'curve-weth-steth-1',
-        title: 'WETH-stETH Curve',
-        chain: 'Ethereum',
-        strategy: 'Curve ETH Staking',
-        projAPY: 7.5,
-        collateralAPY: 3.8,
-        tvl: 850_000_000,
-        risk: 'low',
-        leverage: 3,
-        estimatedGas: 18,
-      },
-    ],
-    wstETH: [
-      {
-        id: 'lido-wsteth-1',
-        title: 'wstETH Lido Boost',
-        chain: 'Ethereum',
-        strategy: 'Lido Liquid Staking + Curve',
-        projAPY: 8.9,
-        collateralAPY: 3.3,
-        tvl: 1_200_000_000,
-        risk: 'medium',
-        leverage: 2.8,
-        estimatedGas: 22,
-      },
-    ],
-  };
+function matchesRiskTolerance(risk: string, tolerance?: string): boolean {
+  if (!tolerance || tolerance === 'high') return true;
+  if (tolerance === 'medium') return risk !== 'high';
+  return risk === 'low';
+}
 
-  const assetUpper = asset.toUpperCase();
-  return strategies[assetUpper] || strategies.USDC || [];
+function estimateGas(chain: string): number {
+  const gasEstimates: Record<string, number> = {
+    Mainnet: 15,
+    Arbitrum: 2,
+    Optimism: 2,
+    Base: 1,
+    BNB: 3,
+  };
+  return gasEstimates[chain] || 10;
 }

@@ -15,6 +15,7 @@ export interface WalletAnalysis {
   tokens: TokenBalance[];
   gearboxCompatible: TokenBalance[];
   recommendations: string[];
+  suggestedSearchTokens: string[]; // Tokens to query strategies for (USDC, WETH, etc.)
 }
 
 // Gearbox-compatible tokens on Ethereum
@@ -25,14 +26,15 @@ const GEARBOX_TOKENS = [
   { symbol: 'WETH', address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18 },
   { symbol: 'wstETH', address: '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0', decimals: 18 },
   { symbol: 'WBTC', address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', decimals: 8 },
+  { symbol: 'GHO', address: '0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f', decimals: 18 },
+  { symbol: 'sUSDe', address: '0x9D39A5DE30e57443BfF2A8307A4256c8797A3497', decimals: 18 },
 ];
 
 // Simple price oracle using CoinGecko API (free, no auth required)
 async function fetchTokenPrices(): Promise<Record<string, number>> {
   try {
-    const symbols = GEARBOX_TOKENS.map(t => t.symbol.toLowerCase()).join(',');
     const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=usd-coin,tether,dai,ethereum,wrapped-steth,wrapped-bitcoin&vs_currencies=usd`,
+      `https://api.coingecko.com/api/v3/simple/price?ids=usd-coin,tether,dai,ethereum,wrapped-steth,wrapped-bitcoin,gho,ethena-staked-usde&vs_currencies=usd`,
       {
         headers: { 'Accept': 'application/json' },
       }
@@ -50,8 +52,11 @@ async function fetchTokenPrices(): Promise<Record<string, number>> {
       USDT: data['tether']?.usd || 1,
       DAI: data['dai']?.usd || 1,
       WETH: data['ethereum']?.usd || 3000,
+      ETH: data['ethereum']?.usd || 3000,
       wstETH: data['wrapped-steth']?.usd || 3500,
       WBTC: data['wrapped-bitcoin']?.usd || 60000,
+      GHO: data['gho']?.usd || 1,
+      sUSDe: data['ethena-staked-usde']?.usd || 1,
     };
   } catch (error) {
     console.error('Error fetching prices:', error);
@@ -61,8 +66,11 @@ async function fetchTokenPrices(): Promise<Record<string, number>> {
       USDT: 1,
       DAI: 1,
       WETH: 3000,
+      ETH: 3000,
       wstETH: 3500,
       WBTC: 60000,
+      GHO: 1,
+      sUSDe: 1,
     };
   }
 }
@@ -76,6 +84,39 @@ async function fetchTokenBalances(walletAddress: string): Promise<TokenBalance[]
     const prices = await fetchTokenPrices();
     const balances: TokenBalance[] = [];
 
+    // Check native ETH balance first
+    try {
+      const ethResponse = await fetch(process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_getBalance',
+          params: [walletAddress, 'latest'],
+          id: 1,
+        }),
+      });
+
+      const ethData: any = await ethResponse.json();
+      const ethBalanceHex = ethData.result || '0x0';
+      const ethBalanceRaw = BigInt(ethBalanceHex);
+      const ethBalance = Number(ethBalanceRaw) / Math.pow(10, 18);
+
+      if (ethBalance > 0) {
+        const valueUSD = ethBalance * (prices['ETH'] || 3000);
+        balances.push({
+          symbol: 'ETH',
+          name: 'Ethereum',
+          balance: ethBalance.toFixed(4),
+          decimals: 18,
+          valueUSD,
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching ETH balance:', err);
+    }
+
+    // Check ERC20 tokens
     for (const token of GEARBOX_TOKENS) {
       try {
         // Query ERC20 balanceOf via RPC
@@ -140,15 +181,39 @@ export async function analyzeWalletHoldings(params: {
     // Filter for Gearbox-compatible tokens with meaningful balances
     const gearboxCompatible = tokens.filter(t => t.valueUSD > 10); // Minimum $10
 
+    // Map user tokens to Gearbox strategy tokens
+    const suggestedSearchTokens: string[] = [];
+    const stablecoins = gearboxCompatible.filter(t => ['USDC', 'USDT', 'DAI', 'GHO', 'sUSDe'].includes(t.symbol));
+    const eth = gearboxCompatible.find(t => t.symbol === 'WETH' || t.symbol === 'wstETH' || t.symbol === 'ETH');
+    const wstETH = gearboxCompatible.find(t => t.symbol === 'wstETH');
+    const wbtc = gearboxCompatible.find(t => t.symbol === 'WBTC');
+
+    // Add USDC for any stablecoins (GHO, sUSDe, DAI, USDT all map to USDC strategies)
+    if (stablecoins.length > 0) {
+      suggestedSearchTokens.push('USDC');
+    }
+
+    // Add WETH for ETH or WETH (ETH must be wrapped to use in Gearbox)
+    if (eth) {
+      suggestedSearchTokens.push('WETH');
+    }
+
+    // Add wstETH if they have it (liquid staking derivative)
+    if (wstETH) {
+      suggestedSearchTokens.push('wstETH');
+    }
+
+    // Add WBTC if they have it
+    if (wbtc) {
+      suggestedSearchTokens.push('WBTC');
+    }
+
     // Generate recommendations
     const recommendations: string[] = [];
 
     if (gearboxCompatible.length === 0) {
       recommendations.push('No Gearbox-compatible tokens found. Consider depositing USDC, WETH, or wstETH.');
     } else {
-      const stablecoins = gearboxCompatible.filter(t => ['USDC', 'USDT', 'DAI'].includes(t.symbol));
-      const eth = gearboxCompatible.find(t => t.symbol === 'WETH' || t.symbol === 'wstETH');
-
       if (stablecoins.length > 0) {
         const stableValue = stablecoins.reduce((sum, t) => sum + t.valueUSD, 0);
         recommendations.push(`You have $${stableValue.toFixed(2)} in stablecoins. Consider low-risk Curve/Yearn strategies with 1.5-3x leverage.`);
@@ -171,6 +236,7 @@ export async function analyzeWalletHoldings(params: {
       tokens,
       gearboxCompatible,
       recommendations,
+      suggestedSearchTokens,
     };
   } catch (error) {
     console.error('Error analyzing wallet:', error);

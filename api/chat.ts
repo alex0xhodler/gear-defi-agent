@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createGeminiAgent } from './utils/gemini-client';
-import { queryFarmOpportunities } from './tools/query-strategies';
-import { analyzeWalletHoldings } from './tools/analyze-wallet';
-import { calculatePositionMetrics } from './tools/calculate-health';
+import { createGeminiAgent } from './utils/gemini-client.js';
+import { queryFarmOpportunities } from './tools/query-strategies.js';
+import { analyzeWalletHoldings } from './tools/analyze-wallet.js';
+import { calculatePositionMetrics } from './tools/calculate-health.js';
 
 // In-memory conversation storage (for MVP - use Redis/DB for production)
 const conversations = new Map<string, any[]>();
@@ -40,27 +40,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     while (response.functionCalls() && response.functionCalls()!.length > 0 && attempts < maxAttempts) {
       attempts++;
-      const functionCall = response.functionCalls()![0];
+      const functionCalls = response.functionCalls()!;
 
-      console.log('Function call:', functionCall.name, functionCall.args);
+      console.log(`Processing ${functionCalls.length} function calls`);
 
-      // Execute the requested tool
-      let toolResult: any;
-      try {
-        toolResult = await executeTool(functionCall.name, functionCall.args);
-      } catch (error: any) {
-        toolResult = { error: error.message || 'Tool execution failed' };
-      }
+      // Execute ALL requested tools and collect results
+      const functionResponses = [];
+      for (const functionCall of functionCalls) {
+        console.log('Function call:', functionCall.name, functionCall.args);
 
-      // Send function response back to model
-      result = await chat.sendMessage([
-        {
+        let toolResult: any;
+        try {
+          toolResult = await executeTool(functionCall.name, functionCall.args);
+        } catch (error: any) {
+          toolResult = { error: error.message || 'Tool execution failed' };
+        }
+
+        functionResponses.push({
           functionResponse: {
             name: functionCall.name,
-            response: toolResult,
+            response: {
+              name: functionCall.name,
+              content: toolResult,
+            },
           },
-        },
-      ]);
+        });
+      }
+
+      // Send ALL function responses back to model at once
+      result = await chat.sendMessage(functionResponses);
 
       response = result.response;
     }
@@ -72,11 +80,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     history = await chat.getHistory();
     conversations.set(historyKey, history);
 
-    // Return response with optional strategy data
+    // Check if we have strategy results or wallet tokens from the last tool execution
+    let strategies = null;
+    let suggestedTokens = null;
+    if (attempts > 0) {
+      console.log('🔍 Checking for tool results in history. Attempts:', attempts);
+
+      // Get the last function call from history
+      const lastFunctionCall = history
+        .slice()
+        .reverse()
+        .find((entry: any) => entry.role === 'function');
+
+      console.log('📜 Last function call:', JSON.stringify(lastFunctionCall, null, 2));
+
+      if (lastFunctionCall?.parts?.[0]?.functionResponse?.response?.content) {
+        const content = lastFunctionCall.parts[0].functionResponse.response.content;
+        console.log('📦 Content type:', Array.isArray(content) ? 'array' : typeof content);
+        console.log('📦 Content:', JSON.stringify(content, null, 2));
+
+        // Check if it's an array of opportunities (strategies)
+        if (Array.isArray(content) && content.length > 0 && content[0].projAPY !== undefined) {
+          strategies = content;
+          console.log('✅ Extracted strategies:', strategies.length);
+        }
+        // Check if it's wallet analysis result with suggestedSearchTokens
+        else if (content.suggestedSearchTokens && Array.isArray(content.suggestedSearchTokens)) {
+          suggestedTokens = content.suggestedSearchTokens;
+          console.log('✅ Extracted suggested tokens:', suggestedTokens);
+        } else {
+          console.log('❌ Content is not a valid strategies array or wallet analysis');
+        }
+      } else {
+        console.log('❌ No function response content found');
+      }
+    }
+
+    // Return response with optional strategy data and suggested tokens
     return res.status(200).json({
       message: textResponse,
       conversationId,
       userId,
+      strategies, // Include strategies if available
+      suggestedTokens, // Include suggested tokens if available
     });
 
   } catch (error: any) {

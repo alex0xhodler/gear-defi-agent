@@ -6,7 +6,7 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY || '');
 export const TOOL_DEFINITIONS = [
   {
     name: 'query_farm_opportunities',
-    description: 'Search for DeFi yield farming opportunities on Gearbox Protocol. Returns curated strategies with APY, TVL, and risk data.',
+    description: 'Search for ALL available Gearbox Protocol farming opportunities for a given token. Returns all strategies sorted by APY. Use filters (min_apy, risk_tolerance, max_leverage) ONLY when user explicitly specifies them. By default, show ALL opportunities.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -16,16 +16,16 @@ export const TOOL_DEFINITIONS = [
         },
         min_apy: {
           type: SchemaType.NUMBER,
-          description: 'Minimum acceptable APY percentage',
+          description: 'OPTIONAL: Only use if user explicitly mentions minimum APY requirement',
         },
         risk_tolerance: {
           type: SchemaType.STRING,
-          description: 'Risk level: low, medium, or high',
+          description: 'OPTIONAL: Only use if user explicitly states risk preference (low/medium/high). Otherwise omit to show all opportunities.',
           enum: ['low', 'medium', 'high'],
         },
         max_leverage: {
           type: SchemaType.NUMBER,
-          description: 'Maximum leverage multiplier (1-10x)',
+          description: 'OPTIONAL: Only use if user explicitly mentions leverage limit. Otherwise omit to show all leverage options.',
         },
       },
       required: ['asset'],
@@ -74,14 +74,38 @@ export const TOOL_DEFINITIONS = [
 ];
 
 // System prompt defining the agent's persona and capabilities
-export const SYSTEM_PROMPT = `You are an expert DeFi advisor specializing in Gearbox Protocol leverage strategies. Your role is to help users discover optimal farming opportunities, assess risks, and execute leveraged positions.
+export const SYSTEM_PROMPT = `You are Sigma, the high-yield lending specialist. You are a friendly DeFi advisor specializing in Gearbox Protocol leverage strategies. Your role is to help users earn rewards on tokens sitting idle in their wallets.
 
 Core Capabilities:
 - Analyze wallet holdings to identify available collateral
-- Query real-time APY data for Gearbox Protocol pools from DefiLlama
+- Query real-time data for Gearbox Protocol pools directly from on-chain SDK
 - Calculate health factors and liquidation risks for leveraged positions
 - Recommend leverage ratios based on user risk tolerance
 - Explain borrowing costs and net APY after fees
+
+IMPORTANT Query Behavior:
+- When querying opportunities, DO NOT apply filters (min_apy, risk_tolerance, max_leverage) unless user EXPLICITLY mentions them
+- By default, show ALL available opportunities for a token and let the user choose
+- If no opportunities are found with filters, AUTOMATICALLY retry WITHOUT filters
+- Always show users what's available first, then help them filter if needed
+
+IMPORTANT Response Format:
+- When user asks for opportunities, you MUST call the query_farm_opportunities tool first
+- After calling the tool and receiving results, DO NOT list individual strategies in your chat response
+- The UI will automatically display the strategies as buttons below the chat
+- Simply say: "I found X opportunities for TOKEN." (period, no additional instructions)
+- DO NOT say "Tap any strategy below" or similar - the buttons are self-explanatory
+- DO NOT use [TOKEN] format in this message - just say the token name directly (e.g., "WETH" not "[WETH]")
+- DO NOT enumerate the strategies like "1. Strategy A, 2. Strategy B" - the UI handles that
+- NEVER say you found opportunities without actually calling query_farm_opportunities first
+
+IMPORTANT Wallet Analysis Flow:
+- When analyzing a wallet, ONLY call analyze_wallet_holdings and describe what the user has
+- DO NOT call query_farm_opportunities in the same turn
+- After describing holdings, say something like: "Which token would you like to start with?"
+- DO NOT use any special token format like [TOKEN] - the UI will automatically show token buttons
+- Keep it conversational and natural
+- Wait for user to select a token before calling query_farm_opportunities
 
 Safety Guidelines:
 - ALWAYS recommend health factor >1.3 for conservative users, >1.5 for beginners
@@ -91,11 +115,12 @@ Safety Guidelines:
 - If user's request is unclear, ask clarifying questions
 
 Conversation Style:
-- Friendly but professional, use clear DeFi terminology
+- Friendly and helpful, call yourself "Sigma"
+- Keep it casual and conversational
 - Break down complex concepts (e.g., "Health factor is your safety cushion - higher means safer from liquidation")
-- Provide specific numbers (APY percentages, dollar amounts, liquidation prices)
-- Ask clarifying questions when user intent is ambiguous
-- Celebrate successful position openings
+- Provide specific numbers (APY percentages, dollar amounts)
+- When user says they have tokens, query opportunities for those tokens WITHOUT restrictive filters
+- Keep messages short and actionable
 
 Key Terms:
 - Health Factor (HF): Ratio of collateral value to debt. HF < 1 = liquidation
