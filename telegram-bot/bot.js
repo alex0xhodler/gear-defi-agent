@@ -26,21 +26,54 @@ bot.onText(/\/start/, async (msg) => {
   const username = msg.from.username;
 
   try {
-    await db.getOrCreateUser(chatId, username);
+    const user = await db.getOrCreateUser(chatId, username);
+    const mandates = await db.getUserMandates(user.id);
 
-    await bot.sendMessage(
-      chatId,
-      `👋 *Welcome to Gearbox Sigma Agent!*\n\n` +
-      `I'm your 24/7 DeFi yield hunter. I'll watch Gearbox Protocol opportunities and alert you when yields match your mandates.\n\n` +
-      `*Commands:*\n` +
-      `/create - Create new yield mandate\n` +
-      `/list - View your active mandates\n` +
-      `/opportunities - Check current top yields\n` +
-      `/wallet - Connect wallet address\n` +
-      `/stats - View your notification stats\n` +
-      `/help - Show all commands`,
-      { parse_mode: 'Markdown' }
-    );
+    if (mandates.length === 0) {
+      // First-time user - offer quick setup
+      await bot.sendMessage(
+        chatId,
+        `👋 *Welcome to Gearbox Sigma Agent!*\n\n` +
+        `I'm your 24/7 DeFi yield hunter. I'll watch Gearbox Protocol opportunities and alert you when yields match your mandates.\n\n` +
+        `🚀 *Quick Start:* Choose a ready-made template or create your own custom mandate!`,
+        { parse_mode: 'Markdown' }
+      );
+
+      await bot.sendMessage(
+        chatId,
+        `📋 *Choose a template to get started:*`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🛡️ Conservative (5% APY, Low Risk)', callback_data: 'setup_default_conservative' }
+              ],
+              [
+                { text: '⚖️ Balanced (7% APY, Medium Risk)', callback_data: 'setup_default_balanced' }
+              ],
+              [
+                { text: '🚀 Aggressive (12% APY, High Risk)', callback_data: 'setup_default_aggressive' }
+              ],
+              [
+                { text: '🎨 Custom Mandate', callback_data: 'menu_create' }
+              ]
+            ]
+          }
+        }
+      );
+    } else {
+      // Returning user - show main menu
+      await bot.sendMessage(
+        chatId,
+        `👋 *Welcome back!*\n\n` +
+        `You have ${mandates.length} active mandate${mandates.length > 1 ? 's' : ''}.\n` +
+        `I'm watching for opportunities 24/7! 🔍`,
+        { parse_mode: 'Markdown' }
+      );
+
+      await showMainMenu(chatId);
+    }
   } catch (error) {
     console.error('Error in /start:', error);
     await bot.sendMessage(chatId, '❌ Error starting bot. Please try again.');
@@ -157,6 +190,26 @@ bot.on('callback_query', async (query) => {
         `You'll get a Telegram alert when I find matching opportunities! 🚀\n\n` +
         `_Monitoring runs every 15 minutes_`,
         { parse_mode: 'Markdown' }
+      );
+
+      // Encourage adding more mandates
+      await bot.sendMessage(
+        chatId,
+        `💡 *Want to cover more opportunities?*\n\n` +
+        `Consider adding mandates for different assets (WETH, wstETH) or risk levels to maximize your yield hunting!`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '➕ Add Another Mandate', callback_data: 'menu_create' }
+              ],
+              [
+                { text: '📋 Back to Main Menu', callback_data: 'back_to_menu' }
+              ]
+            ]
+          }
+        }
       );
     }
 
@@ -530,5 +583,143 @@ process.on('SIGTERM', () => {
 });
 
 console.log('✅ Bot is running! Waiting for messages...');
+
+// ==========================================
+// HELPER: Show Main Menu
+// ==========================================
+
+function showMainMenu(chatId, message = '📋 *Main Menu*') {
+  return bot.sendMessage(
+    chatId,
+    message,
+    {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '➕ Create Mandate', callback_data: 'menu_create' },
+            { text: '📋 My Mandates', callback_data: 'menu_list' }
+          ],
+          [
+            { text: '💎 View Opportunities', callback_data: 'menu_opportunities' },
+            { text: '📊 My Stats', callback_data: 'menu_stats' }
+          ],
+          [
+            { text: '💳 Wallet', callback_data: 'menu_wallet' },
+            { text: '❓ Help', callback_data: 'menu_help' }
+          ]
+        ]
+      }
+    }
+  );
+}
+
+// Handle main menu callbacks
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const data = query.data;
+
+  if (data === 'menu_create') {
+    await bot.answerCallbackQuery(query.id);
+    // Trigger /create command
+    bot.emit('message', { chat: { id: chatId }, text: '/create', from: query.from });
+  } else if (data === 'menu_list') {
+    await bot.answerCallbackQuery(query.id);
+    bot.emit('message', { chat: { id: chatId }, text: '/list', from: query.from });
+  } else if (data === 'menu_opportunities') {
+    await bot.answerCallbackQuery(query.id);
+    bot.emit('message', { chat: { id: chatId }, text: '/opportunities', from: query.from });
+  } else if (data === 'menu_stats') {
+    await bot.answerCallbackQuery(query.id);
+    bot.emit('message', { chat: { id: chatId }, text: '/stats', from: query.from });
+  } else if (data === 'menu_wallet') {
+    await bot.answerCallbackQuery(query.id);
+    bot.emit('message', { chat: { id: chatId }, text: '/wallet', from: query.from });
+  } else if (data === 'menu_help') {
+    await bot.answerCallbackQuery(query.id);
+    bot.emit('message', { chat: { id: chatId }, text: '/help', from: query.from });
+  } else if (data === 'back_to_menu') {
+    await bot.answerCallbackQuery(query.id);
+    await showMainMenu(chatId);
+  } else if (data.startsWith('setup_default_')) {
+    await bot.answerCallbackQuery(query.id);
+    const template = data.replace('setup_default_', '');
+    await setupDefaultMandate(chatId, template);
+  }
+});
+
+// ==========================================
+// HELPER: Setup Default Mandates
+// ==========================================
+
+async function setupDefaultMandate(chatId, template) {
+  try {
+    const user = await db.getOrCreateUser(chatId);
+
+    const templates = {
+      'conservative': {
+        asset: 'USDC',
+        minAPY: 5.0,
+        maxLeverage: 1.5,
+        risk: 'Low',
+        maxPosition: 5000
+      },
+      'balanced': {
+        asset: 'USDC',
+        minAPY: 7.0,
+        maxLeverage: 2.5,
+        risk: 'Medium',
+        maxPosition: 10000
+      },
+      'aggressive': {
+        asset: 'USDT0',
+        minAPY: 12.0,
+        maxLeverage: 5,
+        risk: 'High',
+        maxPosition: 15000
+      }
+    };
+
+    const mandate = templates[template];
+    if (!mandate) return;
+
+    const createdMandate = await db.createMandate(user.id, mandate);
+    await db.signMandate(createdMandate.id);
+
+    await bot.sendMessage(
+      chatId,
+      `✅ *${template.charAt(0).toUpperCase() + template.slice(1)} Mandate Activated!*\n\n` +
+      `I'm now watching for *${mandate.asset}* opportunities with:\n` +
+      `📈 Min APY: ${mandate.minAPY}%\n` +
+      `⚡ Max Leverage: ${mandate.maxLeverage}x\n` +
+      `🛡️ Risk: ${mandate.risk}\n\n` +
+      `You'll get alerts when matching opportunities appear! 🚀`,
+      { parse_mode: 'Markdown' }
+    );
+
+    // Show options to add more or go to menu
+    await bot.sendMessage(
+      chatId,
+      `💡 *Want to cover more opportunities?*\n\n` +
+      `Consider adding mandates for different assets to maximize your yield hunting!`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '➕ Add Another Mandate', callback_data: 'menu_create' }
+            ],
+            [
+              { text: '📋 Back to Main Menu', callback_data: 'back_to_menu' }
+            ]
+          ]
+        }
+      }
+    );
+  } catch (error) {
+    console.error('Error setting up default mandate:', error);
+    await bot.sendMessage(chatId, '❌ Error setting up mandate. Please try again.');
+  }
+}
 
 module.exports = bot;
