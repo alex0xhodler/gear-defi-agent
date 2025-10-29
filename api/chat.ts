@@ -82,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Check if we have strategy results or wallet tokens from the last tool execution
     let strategies = null;
-    let suggestedTokens = null;
+    let walletTokens = null;
     if (attempts > 0) {
       console.log('🔍 Checking for tool results in history. Attempts:', attempts);
 
@@ -104,10 +104,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           strategies = content;
           console.log('✅ Extracted strategies:', strategies.length);
         }
-        // Check if it's wallet analysis result with suggestedSearchTokens
-        else if (content.suggestedSearchTokens && Array.isArray(content.suggestedSearchTokens)) {
-          suggestedTokens = content.suggestedSearchTokens;
-          console.log('✅ Extracted suggested tokens:', suggestedTokens);
+        // Check if it's wallet analysis result with gearboxCompatible tokens
+        else if (content.gearboxCompatible && Array.isArray(content.gearboxCompatible)) {
+          walletTokens = content.gearboxCompatible.map((token: any) => ({
+            symbol: token.symbol,
+            balance: token.balance,
+            valueUSD: token.valueUSD
+          }));
+          console.log('✅ Extracted wallet tokens:', walletTokens);
         } else {
           console.log('❌ Content is not a valid strategies array or wallet analysis');
         }
@@ -116,13 +120,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Return response with optional strategy data and suggested tokens
+    // Return response with optional strategy data and wallet tokens
     return res.status(200).json({
       message: textResponse,
       conversationId,
       userId,
       strategies, // Include strategies if available
-      suggestedTokens, // Include suggested tokens if available
+      walletTokens, // Include wallet tokens if available
     });
 
   } catch (error: any) {
@@ -134,12 +138,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+// Map user wallet tokens to Gearbox-compatible tokens
+function mapTokenToGearbox(token: string): string {
+  const tokenMap: Record<string, string> = {
+    'ETH': 'WETH',           // ETH must be wrapped
+    'GHO': 'USDC',           // GHO is a stablecoin, map to USDC strategies
+    'sUSDe': 'USDC',         // sUSDe is a stablecoin, map to USDC strategies
+    'USDT': 'USDC',          // USDT maps to USDC strategies
+    'DAI': 'USDC',           // DAI maps to USDC strategies
+    // Direct mappings (already Gearbox-compatible)
+    'USDC': 'USDC',
+    'WETH': 'WETH',
+    'wstETH': 'wstETH',
+    'WBTC': 'WBTC',
+  };
+
+  return tokenMap[token.toUpperCase()] || token;
+}
+
 // Execute tool functions
 async function executeTool(toolName: string, args: Record<string, any>): Promise<any> {
   switch (toolName) {
     case 'query_farm_opportunities':
+      // Map user token to Gearbox-compatible token
+      const mappedAsset = args.asset ? mapTokenToGearbox(args.asset) : args.asset;
+      console.log(`🔄 Token mapping: ${args.asset} → ${mappedAsset}`);
+
       return await queryFarmOpportunities({
-        asset: args.asset,
+        asset: mappedAsset,
         min_apy: args.min_apy,
         risk_tolerance: args.risk_tolerance,
         max_leverage: args.max_leverage,
