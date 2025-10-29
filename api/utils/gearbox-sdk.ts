@@ -52,20 +52,20 @@ async function createPlasmaSDK(): Promise<any> {
     {
       name: 'Invariant Group',
       address: '0x76309a9a56309104518847bba321c261b7b4a43f',
-      defaultSupplyRate: 2551000000000000000000000000n, // 25.51% APY
+      defaultSupplyRate: 864000000000000000000000n, // 8.64% APY (realistic placeholder based on incentives)
       defaultLiquidity: 1000000000000n, // 1M USDT0
     },
     {
       name: 'Edge UltraYield',
       address: '0x53e4e9b8766969c43895839cc9c673bb6bc8ac97',
-      defaultSupplyRate: 2000000000000000000000000000n, // 20% APY (placeholder)
-      defaultLiquidity: 500000000000n, // 500K USDT0 (placeholder)
+      defaultSupplyRate: 750000000000000000000000n, // 7.5% APY (realistic placeholder)
+      defaultLiquidity: 500000000000n, // 500K USDT0
     },
     {
       name: 'Hyperithm',
       address: '0xb74760fd26400030620027dd29d19d74d514700e',
-      defaultSupplyRate: 1800000000000000000000000000n, // 18% APY (placeholder)
-      defaultLiquidity: 300000000000n, // 300K USDT0 (placeholder)
+      defaultSupplyRate: 680000000000000000000000n, // 6.8% APY (realistic placeholder)
+      defaultLiquidity: 300000000000n, // 300K USDT0
     },
   ];
 

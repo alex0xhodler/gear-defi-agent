@@ -537,7 +537,7 @@
                             <p className="text-sm text-txt-tertiary mt-1">{m.strategyDetails.chain} — {m.strategyDetails.strategy}</p>
                             {m.strategyDetails.strategyType === 'passive_lending' && (
                               <p className="text-xs text-txt-secondary mt-2 max-w-md">
-                                Deposit {m.strategyDetails.underlyingSymbol} into the pool to earn {(m.strategyDetails.projAPY / 10).toFixed(2)}% APY. No leverage, no liquidation risk. Withdraw anytime (subject to pool liquidity).
+                                Deposit {m.strategyDetails.underlyingSymbol} into the pool to earn {m.strategyDetails.projAPY.toFixed(2)}% APY. No leverage, no liquidation risk. Withdraw anytime (subject to pool liquidity).
                               </p>
                             )}
                           </div>
@@ -553,7 +553,7 @@
                         <div className="grid grid-cols-2 gap-4 mb-6 mt-4">
                           <div className="bg-bg-elevated border border-border-light p-4 rounded-xl">
                             <div className="text-xs text-txt-tertiary mb-1">Projected APY</div>
-                            <div className="text-3xl font-bold text-brand-green">{(m.strategyDetails.projAPY / 10).toFixed(2)}%</div>
+                            <div className="text-3xl font-bold text-brand-green">{m.strategyDetails.projAPY.toFixed(2)}%</div>
                           </div>
                           <div className="bg-bg-tertiary p-4 rounded-xl">
                             <div className="text-xs text-txt-secondary mb-1">TVL</div>
@@ -764,8 +764,8 @@
                             `Insufficient balance (have ${m.strategyDetails.userBalance})`
                           ) : (
                             m.strategyDetails.strategyType === 'passive_lending' ?
-                              `Earn $${((m.strategyDetails.depositAmount * (m.strategyDetails.projAPY / 10) / 100)).toFixed(2)}/year` :
-                              `Earn $${((m.strategyDetails.depositAmount * (m.strategyDetails.projAPY / 10) / 100)).toFixed(2)}/year`
+                              `Earn $${((m.strategyDetails.depositAmount * m.strategyDetails.projAPY / 100)).toFixed(2)}/year` :
+                              `Earn $${((m.strategyDetails.depositAmount * m.strategyDetails.projAPY / 100)).toFixed(2)}/year`
                           )}
                         </button>
 
