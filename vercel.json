@@ -3,7 +3,7 @@
   "outputDirectory": ".",
   "functions": {
     "api/chat.ts": {
-      "memory": 3008,
+      "memory": 1024,
       "maxDuration": 60
     },
     "api/tools/*.ts": {
