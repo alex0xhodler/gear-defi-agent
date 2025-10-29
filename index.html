@@ -1498,17 +1498,10 @@
                 shares: shares
               };
               setPositions(s=>[pos,...s]);
-              pushNotification({ title: 'Deposit successful!', body: `Received ${parseFloat(shares).toFixed(4)} pool tokens` });
-
-              // Add success message with link to Gearbox dashboard
-              setTimeout(() => {
-                pushMessage('agent', 'Deposit complete! Your position is now active. View and manage your positions on the ', {
-                  successLink: {
-                    url: 'https://app.gearbox.fi/dashboard',
-                    text: 'Gearbox Dashboard'
-                  }
-                });
-              }, 500);
+              pushNotification({
+                title: 'Deposit successful!',
+                body: `Received ${parseFloat(shares).toFixed(4)} pool tokens. View on Gearbox Dashboard: https://app.gearbox.fi/dashboard`
+              });
 
               setTimeout(()=> setActiveTx(null), 2000);
 
