@@ -1360,9 +1360,20 @@
                 }
               }
 
-              // Create provider and signer AFTER network switch (avoid NETWORK_ERROR)
-              const provider = new ethers.providers.Web3Provider(window.ethereum);
-              const signer = provider.getSigner();
+              // Create provider AFTER network switch
+              // For Plasma, use JsonRpcProvider with direct RPC to avoid caching issues
+              let provider, signer;
+
+              if (requiredChainId === PLASMA_CHAIN_ID) {
+                // Use direct Plasma RPC for reliable connection
+                console.log('🔗 Using direct Plasma RPC provider for reliability');
+                provider = new ethers.providers.JsonRpcProvider('https://rpc.plasma.to');
+                signer = new ethers.providers.Web3Provider(window.ethereum).getSigner();
+              } else {
+                // For Ethereum mainnet, use Web3Provider
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                signer = provider.getSigner();
+              }
 
               // Verify we're on the correct network now
               const finalNetwork = await provider.getNetwork();
