@@ -128,6 +128,7 @@ export async function queryFarmOpportunities(params: {
           poolAddress: market.pool.pool.address,
           creditManagerAddress: cm.creditManager.address,
           underlyingToken: market.pool.pool.underlying,
+          underlyingSymbol: underlyingSymbol, // Add symbol for balance fetching
           supportedCollateral,
           liquidationThreshold: Number((maxLT * 100).toFixed(1)),
 
