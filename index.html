@@ -1303,9 +1303,6 @@
                 throw new Error('Please install MetaMask or another Web3 wallet');
               }
 
-              // Get provider and signer from MetaMask
-              const provider = new ethers.providers.Web3Provider(window.ethereum);
-
               // Detect required chain based on token
               const PLASMA_CHAIN_ID = 146;
               const ETHEREUM_CHAIN_ID = 1;
@@ -1315,12 +1312,13 @@
                 ? PLASMA_CHAIN_ID
                 : ETHEREUM_CHAIN_ID;
 
-              // Check current network
-              const network = await provider.getNetwork();
-              console.log(`🌐 Current network: ${network.chainId}, Required: ${requiredChainId}`);
+              // Check current network (use eth_chainId to avoid provider caching issues)
+              const currentChainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+              const currentChainId = parseInt(currentChainIdHex, 16);
+              console.log(`🌐 Current network: ${currentChainId}, Required: ${requiredChainId}`);
 
               // Switch network if needed
-              if (network.chainId !== requiredChainId) {
+              if (currentChainId !== requiredChainId) {
                 pushNotification({
                   title: 'Switching network',
                   body: `Please approve network switch to ${requiredChainId === PLASMA_CHAIN_ID ? 'Plasma' : 'Ethereum'}`
@@ -1336,7 +1334,7 @@
                   console.log(`✅ Switched to chain ${requiredChainId}`);
 
                   // Wait for network switch to complete
-                  await new Promise(resolve => setTimeout(resolve, 1000));
+                  await new Promise(resolve => setTimeout(resolve, 1500));
                 } catch (switchError) {
                   // Network doesn't exist, try to add it (only for Plasma)
                   if (switchError.code === 4902 && requiredChainId === PLASMA_CHAIN_ID) {
@@ -1355,12 +1353,15 @@
                       }],
                     });
                     console.log(`✅ Added and switched to Plasma chain`);
+                    await new Promise(resolve => setTimeout(resolve, 1500));
                   } else {
                     throw switchError;
                   }
                 }
               }
 
+              // Create provider and signer AFTER network switch (avoid NETWORK_ERROR)
+              const provider = new ethers.providers.Web3Provider(window.ethereum);
               const signer = provider.getSigner();
 
               // ERC20 ABI for token interactions
