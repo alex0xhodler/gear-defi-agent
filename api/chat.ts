@@ -141,16 +141,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 // Map user wallet tokens to Gearbox-compatible tokens
 function mapTokenToGearbox(token: string): string {
   const tokenMap: Record<string, string> = {
-    'ETH': 'WETH',           // ETH must be wrapped
-    'GHO': 'USDC',           // GHO is a stablecoin, map to USDC strategies
-    'sUSDe': 'USDC',         // sUSDe is a stablecoin, map to USDC strategies
-    'USDT': 'USDC',          // USDT maps to USDC strategies
-    'DAI': 'USDC',           // DAI maps to USDC strategies
+    'ETH': 'WETH',           // ETH must be wrapped for Gearbox
     // Direct mappings (already Gearbox-compatible)
     'USDC': 'USDC',
+    'USDT': 'USDT',
+    'DAI': 'DAI',
     'WETH': 'WETH',
     'wstETH': 'wstETH',
     'WBTC': 'WBTC',
+    'GHO': 'GHO',            // GHO is directly supported by Gearbox
+    'sUSDe': 'sUSDe',        // sUSDe is directly supported by Gearbox
   };
 
   return tokenMap[token.toUpperCase()] || token;
