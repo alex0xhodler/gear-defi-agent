@@ -133,6 +133,133 @@ bot.on('callback_query', async (query) => {
   try {
     await bot.answerCallbackQuery(query.id);
 
+    // Handle main menu navigation
+    if (data === 'menu_create') {
+      // Trigger /create command
+      const user = await db.getOrCreateUser(chatId);
+      sessions.set(chatId, { step: 'asset', userId: user.id });
+      await bot.sendMessage(
+        chatId,
+        `🎯 *Let's create a yield mandate!*\n\n` +
+        `What asset are you looking to earn with?`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '💵 USDC', callback_data: 'asset_USDC' },
+                { text: '💵 USDT', callback_data: 'asset_USDT' }
+              ],
+              [
+                { text: '⚡ WETH', callback_data: 'asset_WETH' },
+                { text: '🔷 wstETH', callback_data: 'asset_wstETH' }
+              ],
+              [
+                { text: '🪙 USDT0 (Plasma)', callback_data: 'asset_USDT0' }
+              ]
+            ]
+          }
+        }
+      );
+      return;
+    } else if (data === 'menu_list') {
+      const user = await db.getOrCreateUser(chatId);
+      const mandates = await db.getUserMandates(user.id);
+      if (mandates.length === 0) {
+        await bot.sendMessage(chatId, `You don't have any active mandates yet.\n\nUse the button below to create one! 🚀`);
+        await showMainMenu(chatId);
+      } else {
+        const mandatesList = mandates
+          .map((m, i) => {
+            const status = m.signed ? '✅ Active' : '⏸️ Draft';
+            return (
+              `${i + 1}. *${m.asset}* - Min ${m.min_apy}% APY\n` +
+              `   Risk: ${m.risk} | Leverage: ${m.max_leverage}x\n` +
+              `   Status: ${status}`
+            );
+          })
+          .join('\n\n');
+        await bot.sendMessage(chatId, `📋 *Your Active Mandates:*\n\n${mandatesList}`, { parse_mode: 'Markdown' });
+        await showMainMenu(chatId);
+      }
+      return;
+    } else if (data === 'menu_opportunities') {
+      await bot.sendMessage(chatId, '🔍 Scanning current opportunities...');
+      const opportunities = await queryFarmOpportunities({ asset: 'USDC', min_apy: 0 });
+      if (!opportunities || opportunities.length === 0) {
+        await bot.sendMessage(chatId, '❌ No opportunities found. Try again later.');
+        await showMainMenu(chatId);
+      } else {
+        const top3 = opportunities.slice(0, 3);
+        const opportunitiesText = top3
+          .map((opp, i) =>
+            `${i + 1}. *${opp.strategy || opp.pool_name}*\n` +
+            `   📈 APY: ${opp.projAPY?.toFixed(2) || opp.apy?.toFixed(2)}%\n` +
+            `   ⚡ Leverage: ${opp.leverage || opp.maxLeverage || 'N/A'}x\n` +
+            `   🌐 Chain: ${opp.chain}`
+          )
+          .join('\n\n');
+        await bot.sendMessage(chatId, `💎 *Top Opportunities Right Now:*\n\n${opportunitiesText}`, { parse_mode: 'Markdown' });
+        await showMainMenu(chatId);
+      }
+      return;
+    } else if (data === 'menu_stats') {
+      const user = await db.getOrCreateUser(chatId);
+      const stats = await db.getNotificationStats(user.id);
+      await bot.sendMessage(
+        chatId,
+        `📊 *Your Stats*\n\n` +
+        `🔔 Total alerts: ${stats.total_notifications || 0}\n` +
+        `📈 Average APY: ${stats.avg_apy ? stats.avg_apy.toFixed(2) + '%' : 'N/A'}\n` +
+        `⏰ Last alert: ${stats.last_notification || 'Never'}`,
+        { parse_mode: 'Markdown' }
+      );
+      await showMainMenu(chatId);
+      return;
+    } else if (data === 'menu_wallet') {
+      const user = await db.getOrCreateUser(chatId);
+      const currentWallet = user.wallet_address || 'Not connected';
+      await bot.sendMessage(
+        chatId,
+        `💳 *Wallet Status*\n\n` +
+        `Current wallet: \`${currentWallet}\`\n\n` +
+        `To connect a wallet, send:\n` +
+        `/wallet 0xYourWalletAddress`,
+        { parse_mode: 'Markdown' }
+      );
+      await showMainMenu(chatId);
+      return;
+    } else if (data === 'menu_help') {
+      await bot.sendMessage(
+        chatId,
+        `🤖 *Gearbox Sigma Bot - Help*\n\n` +
+        `*Commands:*\n` +
+        `/start - Start the bot\n` +
+        `/create - Create new yield mandate\n` +
+        `/list - View your active mandates\n` +
+        `/opportunities - Check current top yields\n` +
+        `/wallet [address] - Connect/view wallet\n` +
+        `/stats - View notification stats\n` +
+        `/help - Show this help message\n\n` +
+        `*How it works:*\n` +
+        `1. Create a mandate with your criteria\n` +
+        `2. Bot monitors Gearbox every 15 minutes\n` +
+        `3. Get alerts when yields match your mandate\n` +
+        `4. Approve deposits with one click\n\n` +
+        `_Bot runs 24/7 on server - no need to keep anything open!_`,
+        { parse_mode: 'Markdown' }
+      );
+      await showMainMenu(chatId);
+      return;
+    } else if (data === 'back_to_menu') {
+      await showMainMenu(chatId);
+      return;
+    } else if (data.startsWith('setup_default_')) {
+      const template = data.replace('setup_default_', '');
+      await setupDefaultMandate(chatId, template);
+      return;
+    }
+
     // Handle asset selection
     if (data.startsWith('asset_')) {
       const asset = data.replace('asset_', '');
@@ -613,40 +740,6 @@ function showMainMenu(chatId, message = '📋 *Main Menu*') {
     }
   );
 }
-
-// Handle main menu callbacks
-bot.on('callback_query', async (query) => {
-  const chatId = query.message.chat.id;
-  const data = query.data;
-
-  if (data === 'menu_create') {
-    await bot.answerCallbackQuery(query.id);
-    // Trigger /create command
-    bot.emit('message', { chat: { id: chatId }, text: '/create', from: query.from });
-  } else if (data === 'menu_list') {
-    await bot.answerCallbackQuery(query.id);
-    bot.emit('message', { chat: { id: chatId }, text: '/list', from: query.from });
-  } else if (data === 'menu_opportunities') {
-    await bot.answerCallbackQuery(query.id);
-    bot.emit('message', { chat: { id: chatId }, text: '/opportunities', from: query.from });
-  } else if (data === 'menu_stats') {
-    await bot.answerCallbackQuery(query.id);
-    bot.emit('message', { chat: { id: chatId }, text: '/stats', from: query.from });
-  } else if (data === 'menu_wallet') {
-    await bot.answerCallbackQuery(query.id);
-    bot.emit('message', { chat: { id: chatId }, text: '/wallet', from: query.from });
-  } else if (data === 'menu_help') {
-    await bot.answerCallbackQuery(query.id);
-    bot.emit('message', { chat: { id: chatId }, text: '/help', from: query.from });
-  } else if (data === 'back_to_menu') {
-    await bot.answerCallbackQuery(query.id);
-    await showMainMenu(chatId);
-  } else if (data.startsWith('setup_default_')) {
-    await bot.answerCallbackQuery(query.id);
-    const template = data.replace('setup_default_', '');
-    await setupDefaultMandate(chatId, template);
-  }
-});
 
 // ==========================================
 // HELPER: Setup Default Mandates
