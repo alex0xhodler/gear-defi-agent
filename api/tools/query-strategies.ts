@@ -81,8 +81,8 @@ export async function queryFarmOpportunities(params: {
       const underlyingSymbol = poolToken?.symbol || 'Unknown';
       const poolDecimals = poolToken?.decimals || 6;
 
-      // Calculate base supply APY (27 decimals)
-      const supplyAPY = Number(market.pool.pool.supplyRate) / 1e25;
+      // Calculate base supply APY (27 decimals = RAY format)
+      const supplyAPY = Number(market.pool.pool.supplyRate) / 1e27;
 
       // Calculate TVL (convert from wei to USD)
       const tvl = Number(market.pool.pool.expectedLiquidity) / Math.pow(10, poolDecimals);
