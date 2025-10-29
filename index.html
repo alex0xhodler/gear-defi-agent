@@ -729,10 +729,7 @@
                               {m.strategyDetails.estimatedGas ? `$${m.strategyDetails.estimatedGas}` : '<$0.01'}
                             </span>
                           </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-txt-secondary">Collateral APY</span>
-                            <span className="font-semibold text-txt-primary">{m.strategyDetails.collateralAPY}%</span>
-                          </div>
+                          {/* REMOVED: Collateral APY - duplicate of Projected APY shown at top */}
                         </div>
 
                         <button
