@@ -1393,7 +1393,16 @@
                 'function depositWithReferral(uint256 assets, address receiver, uint256 referralCode) returns (uint256)',
               ];
 
-              // Step 1: Get token decimals
+              // Step 1: Verify token contract exists
+              console.log(`🔍 Verifying token contract exists at ${tokenAddress}...`);
+              const tokenCode = await provider.getCode(tokenAddress);
+              console.log(`📜 Token contract code length: ${tokenCode.length} (should be > 2 if contract exists)`);
+
+              if (tokenCode === '0x') {
+                throw new Error(`Token contract not found at ${tokenAddress} on chain ${finalNetwork.chainId}. This token may not exist on this network.`);
+              }
+
+              // Step 2: Get token decimals
               console.log(`🔍 Calling decimals() on token ${tokenAddress}...`);
               const tokenContract = new ethers.Contract(tokenAddress, erc20Abi, provider); // Use provider first for read-only
               const decimals = await tokenContract.decimals();
