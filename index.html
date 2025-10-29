@@ -1305,6 +1305,62 @@
 
               // Get provider and signer from MetaMask
               const provider = new ethers.providers.Web3Provider(window.ethereum);
+
+              // Detect required chain based on token
+              const PLASMA_CHAIN_ID = 146;
+              const ETHEREUM_CHAIN_ID = 1;
+              const PLASMA_USDT0_ADDRESS = '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb';
+
+              const requiredChainId = tokenAddress.toLowerCase() === PLASMA_USDT0_ADDRESS.toLowerCase()
+                ? PLASMA_CHAIN_ID
+                : ETHEREUM_CHAIN_ID;
+
+              // Check current network
+              const network = await provider.getNetwork();
+              console.log(`🌐 Current network: ${network.chainId}, Required: ${requiredChainId}`);
+
+              // Switch network if needed
+              if (network.chainId !== requiredChainId) {
+                pushNotification({
+                  title: 'Switching network',
+                  body: `Please approve network switch to ${requiredChainId === PLASMA_CHAIN_ID ? 'Plasma' : 'Ethereum'}`
+                });
+
+                try {
+                  // Request network switch
+                  await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: `0x${requiredChainId.toString(16)}` }],
+                  });
+
+                  console.log(`✅ Switched to chain ${requiredChainId}`);
+
+                  // Wait for network switch to complete
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (switchError) {
+                  // Network doesn't exist, try to add it (only for Plasma)
+                  if (switchError.code === 4902 && requiredChainId === PLASMA_CHAIN_ID) {
+                    await window.ethereum.request({
+                      method: 'wallet_addEthereumChain',
+                      params: [{
+                        chainId: `0x${PLASMA_CHAIN_ID.toString(16)}`,
+                        chainName: 'Plasma',
+                        nativeCurrency: {
+                          name: 'Ethereum',
+                          symbol: 'ETH',
+                          decimals: 18,
+                        },
+                        rpcUrls: ['https://rpc.plasma.to'],
+                        blockExplorerUrls: ['https://explorer.plasma.to'],
+                      }],
+                    });
+                    console.log(`✅ Added and switched to Plasma chain`);
+                  } else {
+                    throw switchError;
+                  }
+                }
+              }
+
               const signer = provider.getSigner();
 
               // ERC20 ABI for token interactions
