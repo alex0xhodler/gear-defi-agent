@@ -751,15 +751,21 @@
                             // This creates a single-step flow
                             approveProposal(m.strategyDetails.id, depositAmount);
                           }}
-                          disabled={!m.strategyDetails.depositAmount || m.strategyDetails.depositAmount <= 0}
+                          disabled={
+                            !m.strategyDetails.depositAmount ||
+                            m.strategyDetails.depositAmount <= 0 ||
+                            (m.strategyDetails.userBalance && parseFloat(m.strategyDetails.depositAmount) > parseFloat(m.strategyDetails.userBalance))
+                          }
                           className="flex justify-center items-center w-full h-[40px] px-4 py-2 gap-2 flex-shrink-0 rounded-xl bg-brand-pink text-white font-bold hover:bg-[#D10780] disabled:bg-gray-400 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
                         >
-                          {m.strategyDetails.depositAmount > 0 ? (
+                          {!m.strategyDetails.depositAmount || m.strategyDetails.depositAmount <= 0 ? (
+                            'Enter amount to see earnings'
+                          ) : (m.strategyDetails.userBalance && parseFloat(m.strategyDetails.depositAmount) > parseFloat(m.strategyDetails.userBalance)) ? (
+                            `Insufficient balance (have ${m.strategyDetails.userBalance})`
+                          ) : (
                             m.strategyDetails.strategyType === 'passive_lending' ?
                               `Earn $${((m.strategyDetails.depositAmount * (m.strategyDetails.projAPY / 10) / 100)).toFixed(2)}/year` :
                               `Earn $${((m.strategyDetails.depositAmount * (m.strategyDetails.projAPY / 10) / 100)).toFixed(2)}/year`
-                          ) : (
-                            'Enter amount to see earnings'
                           )}
                         </button>
 
@@ -1419,9 +1425,25 @@
               const decimals = await tokenContract.decimals();
               console.log(`💰 Token decimals: ${decimals}`);
 
-              // Step 2: Convert amount to wei
+              // Step 2.5: Check user's token balance BEFORE approval
+              const erc20BalanceAbi = ['function balanceOf(address owner) view returns (uint256)'];
+              const tokenContractBalance = new ethers.Contract(tokenAddress, erc20BalanceAbi, provider);
+              const userBalance = await tokenContractBalance.balanceOf(walletAddress);
+              console.log(`💰 User balance: ${userBalance.toString()}`);
+
+              // Convert amount to wei for comparison
               const amountWei = ethers.utils.parseUnits(amount, decimals);
               console.log(`💰 Amount in wei: ${amountWei.toString()}`);
+
+              // Validate balance before proceeding
+              if (userBalance.isZero()) {
+                throw new Error(`You have 0 ${tokenSymbol}. Please acquire some ${tokenSymbol} before depositing.`);
+              }
+
+              if (userBalance.lt(amountWei)) {
+                const userBalanceFormatted = ethers.utils.formatUnits(userBalance, decimals);
+                throw new Error(`Insufficient balance. You have ${userBalanceFormatted} ${tokenSymbol}, but trying to deposit ${amount} ${tokenSymbol}.`);
+              }
 
               // Step 3: Check existing allowance
               const currentAllowance = await tokenContract.allowance(walletAddress, poolAddress);
