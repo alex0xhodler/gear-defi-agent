@@ -5,7 +5,7 @@
 
 const TelegramBot = require('node-telegram-bot-api');
 const db = require('./database');
-const { queryFarmOpportunities } = require('../api/tools/query-strategies');
+const { queryFarmOpportunities } = require('./query-opportunities');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8466127519:AAGi_Xk1QiQCiZWkEWXPRRBdijgUn0EMTH0';
 

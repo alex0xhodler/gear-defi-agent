@@ -5,7 +5,7 @@
 
 const db = require('./database');
 const bot = require('./bot');
-const { queryFarmOpportunities } = require('../api/tools/query-strategies');
+const { queryFarmOpportunities } = require('./query-opportunities');
 
 // Monitoring interval (15 minutes)
 const MONITOR_INTERVAL = 15 * 60 * 1000;
