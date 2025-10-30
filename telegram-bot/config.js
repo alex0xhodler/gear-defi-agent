@@ -88,41 +88,28 @@ module.exports = {
     },
   },
 
-  // Known Gearbox Pools (for quick reference)
+  // Known Gearbox Pools
+  // IMPORTANT: Update these with actual Gearbox V3 pool addresses
+  // Get addresses from: https://dev.gearbox.fi/docs/documentation/deployments/deployed-contracts
   pools: {
     ethereum: [
-      {
-        address: '0x9ef444a6d7F4A5adcd68FD5329aA5240C90E14d2',
-        name: 'USDC Savings',
-        token: 'USDC',
-        decimals: 6,
-      },
-      {
-        address: '0xda00000035fef4082F78dEF6A8903bee419FbF8E',
-        name: 'USDT Savings',
-        token: 'USDT',
-        decimals: 6,
-      },
-      {
-        address: '0xb03670c20f87f2169A7c4eBE35746007e9259EA9',
-        name: 'wstETH Savings',
-        token: 'wstETH',
-        decimals: 18,
-      },
-      {
-        address: '0x4F9d0c5f1FAD4F83B6d1c9D1b7d5f3c6c1f28b8F',
-        name: 'WETH Savings',
-        token: 'WETH',
-        decimals: 18,
-      },
+      // Uncomment and add real pool addresses here
+      // Example format:
+      // {
+      //   address: '0x...',  // Must be valid checksummed address
+      //   name: 'USDC Pool',
+      //   token: 'USDC',
+      //   decimals: 6,
+      // },
     ],
     plasma: [
-      {
-        address: '0x890a69EF363C9c7BdD5E36eb95Ceb569F63ACbF6',
-        name: 'USDT0 Savings',
-        token: 'USDT0',
-        decimals: 6,
-      },
+      // Uncomment and add real Plasma pool addresses here
+      // {
+      //   address: '0x890a69EF363C9c7BdD5E36eb95Ceb569F63ACbF6',
+      //   name: 'USDT0 Pool',
+      //   token: 'USDT0',
+      //   decimals: 6,
+      // },
     ],
   },
 

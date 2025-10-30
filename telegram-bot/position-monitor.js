@@ -26,7 +26,21 @@ let lastHealthFactorCheck = null;
  */
 async function startMonitoring() {
   console.log('🔍 Starting position monitoring service...');
+
+  // Check if any pools are configured
+  const totalPools = config.pools.ethereum.length + config.pools.plasma.length;
+  if (totalPools === 0) {
+    console.log('⚠️  No pools configured in config.js');
+    console.log('📖 Please add Gearbox pool addresses to config.pools');
+    console.log('   Get addresses from: https://dev.gearbox.fi/docs/documentation/deployments/deployed-contracts');
+    console.log('');
+    console.log('ℹ️  Position monitoring will not scan for positions until pools are configured.');
+    console.log('   The service will still monitor existing positions in the database.');
+    console.log('');
+  }
+
   console.log(`📊 Configuration:`);
+  console.log(`   - Configured pools: ${totalPools} (${config.pools.ethereum.length} Ethereum, ${config.pools.plasma.length} Plasma)`);
   console.log(`   - Position scan interval: ${config.monitoring.positionScanInterval / 60000} minutes`);
   console.log(`   - APY check interval: ${config.monitoring.positionScanInterval / 60000} minutes`);
   console.log(`   - Health factor check interval: ${config.monitoring.healthFactorCheckInterval / 60000} minutes`);
@@ -37,8 +51,12 @@ async function startMonitoring() {
   await db.waitForReady();
   console.log('✅ Database ready');
 
-  // Run position scanner immediately on startup
-  await scanUserPositions();
+  // Only run position scanner if pools are configured
+  if (totalPools > 0) {
+    await scanUserPositions();
+  } else {
+    console.log('⏭️  Skipping initial position scan (no pools configured)');
+  }
 
   // Set up monitoring intervals
   setInterval(async () => {
@@ -74,6 +92,14 @@ async function startMonitoring() {
 async function scanUserPositions() {
   console.log('\n🔍 Scanning user positions...');
   lastPositionScan = new Date();
+
+  // Skip if no pools configured
+  const totalPools = config.pools.ethereum.length + config.pools.plasma.length;
+  if (totalPools === 0) {
+    console.log('   ⏭️  Skipped: No pools configured in config.js');
+    console.log('   💡 Add Gearbox pool addresses to enable position scanning');
+    return;
+  }
 
   try {
     const users = await db.getUsersWithWallets();
