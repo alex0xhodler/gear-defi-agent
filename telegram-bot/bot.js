@@ -20,8 +20,8 @@ console.log('🤖 Gearbox Sigma Bot starting...');
 // Set bot command menu (appears when user types "/" in chat)
 bot.setMyCommands([
   { command: 'start', description: '🏠 Start the bot and view main menu' },
-  { command: 'create', description: '➕ Create a new yield mandate' },
-  { command: 'list', description: '📋 View your active mandates' },
+  { command: 'create', description: '➕ Create a new yield alert' },
+  { command: 'list', description: '📋 View your active alerts' },
   { command: 'positions', description: '💼 View your active positions' },
   { command: 'opportunities', description: '💎 Check current top yields' },
   { command: 'wallet', description: '💳 Connect or view your wallet' },
@@ -53,8 +53,8 @@ bot.onText(/\/start/, async (msg) => {
       await bot.sendMessage(
         chatId,
         `👋 *Welcome to Gearbox Sigma Agent!*\n\n` +
-        `I'm your 24/7 DeFi yield hunter. I'll watch Gearbox Protocol lending pools and alert you when yields match your mandates.\n\n` +
-        `🚀 *Quick Start:* Choose a ready-made template or create your own custom mandate!`,
+        `I'm your 24/7 DeFi yield hunter. I'll watch Gearbox Protocol lending pools and alert you when yields match your criteria.\n\n` +
+        `🚀 *Quick Start:* Choose a ready-made template or create your own custom alert!`,
         { parse_mode: 'Markdown' }
       );
 
@@ -75,7 +75,7 @@ bot.onText(/\/start/, async (msg) => {
                 { text: '🚀 Aggressive (12%+ APY)', callback_data: 'setup_default_aggressive' }
               ],
               [
-                { text: '🎨 Custom Mandate', callback_data: 'menu_create' }
+                { text: '🎨 Custom Alert', callback_data: 'menu_create' }
               ]
             ]
           }
@@ -96,7 +96,7 @@ bot.onText(/\/start/, async (msg) => {
       await bot.sendMessage(
         chatId,
         `👋 *Welcome back!*\n\n` +
-        `You have ${mandates.length} active mandate${mandates.length > 1 ? 's' : ''}.\n` +
+        `You have ${mandates.length} active alert${mandates.length > 1 ? 's' : ''}.\n` +
         `I'm watching for opportunities 24/7! 🔍`,
         { parse_mode: 'Markdown' }
       );
@@ -120,7 +120,7 @@ bot.onText(/\/start/, async (msg) => {
 });
 
 // ==========================================
-// COMMAND: /create (Start mandate creation)
+// COMMAND: /create (Start alert creation)
 // ==========================================
 
 bot.onText(/\/create/, async (msg) => {
@@ -134,7 +134,7 @@ bot.onText(/\/create/, async (msg) => {
 
     await bot.sendMessage(
       chatId,
-      `🎯 *Let's create a yield mandate!*\n\n` +
+      `🎯 *Let's create a yield alert!*\n\n` +
       `What asset are you looking to earn with?`,
       {
         parse_mode: 'Markdown',
@@ -205,7 +205,7 @@ bot.on('callback_query', async (query) => {
       const user = await db.getOrCreateUser(chatId);
       const mandates = await db.getUserMandates(user.id);
       if (mandates.length === 0) {
-        await bot.sendMessage(chatId, `You don't have any active mandates yet.\n\nUse the button below to create one! 🚀`);
+        await bot.sendMessage(chatId, `You don't have any active alerts yet.\n\nUse the button below to create one! 🚀`);
         await showMainMenu(chatId);
       } else {
         const mandatesList = mandates
@@ -218,7 +218,7 @@ bot.on('callback_query', async (query) => {
             );
           })
           .join('\n\n');
-        await bot.sendMessage(chatId, `📋 *Your Active Mandates:*\n\n${mandatesList}`, { parse_mode: 'Markdown' });
+        await bot.sendMessage(chatId, `📋 *Your Active Alerts:*\n\n${mandatesList}`, { parse_mode: 'Markdown' });
         await showMainMenu(chatId);
       }
       return;
@@ -229,15 +229,15 @@ bot.on('callback_query', async (query) => {
       if (mandates.length === 0) {
         await bot.sendMessage(
           chatId,
-          `📋 *No Active Mandates*\n\n` +
-          `Create a mandate first to see matching opportunities!`,
+          `📋 *No Active Alerts*\n\n` +
+          `Create an alert first to see matching opportunities!`,
           { parse_mode: 'Markdown' }
         );
         await showMainMenu(chatId);
         return;
       }
 
-      await bot.sendMessage(chatId, `🔍 Scanning opportunities for your ${mandates.length} mandate${mandates.length > 1 ? 's' : ''}...`);
+      await bot.sendMessage(chatId, `🔍 Scanning opportunities for your ${mandates.length} alert${mandates.length > 1 ? 's' : ''}...`);
 
       let hasResults = false;
       let responseText = `💎 *Matching Opportunities:*\n\n`;
@@ -261,11 +261,15 @@ bot.on('callback_query', async (query) => {
       }
 
       if (!hasResults) {
-        await bot.sendMessage(chatId, '❌ No opportunities found matching your mandates.');
+        await bot.sendMessage(chatId, '❌ No opportunities found matching your alerts.');
       } else {
         await bot.sendMessage(chatId, responseText, { parse_mode: 'Markdown' });
       }
       await showMainMenu(chatId);
+      return;
+    } else if (data === 'menu_positions') {
+      // Trigger /positions command via positions handler
+      await positionCommands.handlePositionsCommand(bot, { chat: { id: chatId } });
       return;
     } else if (data === 'menu_stats') {
       const user = await db.getOrCreateUser(chatId);
@@ -299,17 +303,18 @@ bot.on('callback_query', async (query) => {
         `🤖 *Gearbox Sigma Bot - Help*\n\n` +
         `*Commands:*\n` +
         `/start - Start the bot\n` +
-        `/create - Create new yield mandate\n` +
-        `/list - View your active mandates\n` +
+        `/create - Create new yield alert\n` +
+        `/list - View your active alerts\n` +
+        `/positions - View your active positions\n` +
         `/opportunities - Check current top yields\n` +
         `/wallet [address] - Connect/view wallet\n` +
         `/stats - View notification stats\n` +
         `/help - Show this help message\n\n` +
         `*How it works:*\n` +
-        `1. Create a mandate with your criteria\n` +
+        `1. Create an alert with your criteria\n` +
         `2. Bot monitors Gearbox every 15 minutes\n` +
-        `3. Get alerts when yields match your mandate\n` +
-        `4. Approve deposits with one click\n\n` +
+        `3. Get alerts when yields match your criteria\n` +
+        `4. Connect wallet to track positions\n\n` +
         `_Bot runs 24/7 on server - no need to keep anything open!_`,
         { parse_mode: 'Markdown' }
       );
@@ -530,7 +535,7 @@ bot.on('message', async (msg) => {
 });
 
 // ==========================================
-// COMMAND: /list (View user's mandates)
+// COMMAND: /list (View user's alerts)
 // ==========================================
 
 bot.onText(/\/list/, async (msg) => {
@@ -543,7 +548,7 @@ bot.onText(/\/list/, async (msg) => {
     if (mandates.length === 0) {
       await bot.sendMessage(
         chatId,
-        `You don't have any active mandates yet.\n\nUse /create to set one up! 🚀`
+        `You don't have any active alerts yet.\n\nUse /create to set one up! 🚀`
       );
       return;
     }
@@ -561,12 +566,12 @@ bot.onText(/\/list/, async (msg) => {
 
     await bot.sendMessage(
       chatId,
-      `📋 *Your Active Mandates:*\n\n${mandatesList}`,
+      `📋 *Your Active Alerts:*\n\n${mandatesList}`,
       { parse_mode: 'Markdown' }
     );
   } catch (error) {
     console.error('Error in /list:', error);
-    await bot.sendMessage(chatId, '❌ Error fetching mandates.');
+    await bot.sendMessage(chatId, '❌ Error fetching alerts.');
   }
 });
 
@@ -584,18 +589,18 @@ bot.onText(/\/opportunities/, async (msg) => {
     if (mandates.length === 0) {
       await bot.sendMessage(
         chatId,
-        `📋 *No Active Mandates*\n\n` +
-        `You need to create a mandate first to see matching opportunities!\n\n` +
-        `Use /create to set up your first mandate.`,
+        `📋 *No Active Alerts*\n\n` +
+        `You need to create an alert first to see matching opportunities!\n\n` +
+        `Use /create to set up your first alert.`,
         { parse_mode: 'Markdown' }
       );
       return;
     }
 
-    await bot.sendMessage(chatId, `🔍 Scanning opportunities for your ${mandates.length} mandate${mandates.length > 1 ? 's' : ''}...`);
+    await bot.sendMessage(chatId, `🔍 Scanning opportunities for your ${mandates.length} alert${mandates.length > 1 ? 's' : ''}...`);
 
     let hasResults = false;
-    let responseText = `💎 *Opportunities Matching Your Mandates:*\n\n`;
+    let responseText = `💎 *Opportunities Matching Your Alerts:*\n\n`;
 
     // Query opportunities for each mandate
     for (const mandate of mandates) {
@@ -626,7 +631,7 @@ bot.onText(/\/opportunities/, async (msg) => {
     if (!hasResults) {
       await bot.sendMessage(
         chatId,
-        `❌ No opportunities found matching any of your mandates.\n\n` +
+        `❌ No opportunities found matching any of your alerts.\n\n` +
         `Try lowering your minimum APY requirements or checking different assets.`
       );
     } else {
@@ -768,19 +773,19 @@ bot.onText(/\/help/, async (msg) => {
     `🤖 *Gearbox Sigma Bot - Help*\n\n` +
     `*Commands:*\n` +
     `/start - Start the bot\n` +
-    `/create - Create new yield mandate\n` +
-    `/list - View your active mandates\n` +
+    `/create - Create new yield alert\n` +
+    `/list - View your active alerts\n` +
     `/positions - View your active positions\n` +
     `/opportunities - Check current top yields\n` +
     `/wallet [address] - Connect/view wallet\n` +
     `/stats - View notification stats\n` +
     `/help - Show this help message\n\n` +
     `*How it works:*\n` +
-    `1. Create a mandate with your criteria\n` +
+    `1. Create an alert with your criteria\n` +
     `2. Bot monitors Gearbox every 15 minutes\n` +
-    `3. Get alerts when yields match your mandate\n` +
+    `3. Get alerts when yields match your criteria\n` +
     `4. Connect your wallet to track positions\n` +
-    `5. Get alerts for APY changes and liquidation risks\n\n` +
+    `5. Get alerts for APY changes\n\n` +
     `_Bot runs 24/7 on server - no need to keep anything open!_`,
     { parse_mode: 'Markdown' }
   );
@@ -823,15 +828,18 @@ function showMainMenu(chatId, message = '📋 *Main Menu*') {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: '➕ Create Mandate', callback_data: 'menu_create' },
-            { text: '📋 My Mandates', callback_data: 'menu_list' }
+            { text: '➕ Create Alert', callback_data: 'menu_create' },
+            { text: '📋 My Alerts', callback_data: 'menu_list' }
           ],
           [
-            { text: '💎 View Opportunities', callback_data: 'menu_opportunities' },
-            { text: '📊 My Stats', callback_data: 'menu_stats' }
+            { text: '💼 My Positions', callback_data: 'menu_positions' },
+            { text: '💎 Opportunities', callback_data: 'menu_opportunities' }
           ],
           [
             { text: '💳 Wallet', callback_data: 'menu_wallet' },
+            { text: '📊 Stats', callback_data: 'menu_stats' }
+          ],
+          [
             { text: '❓ Help', callback_data: 'menu_help' }
           ]
         ]
