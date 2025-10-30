@@ -3,11 +3,14 @@
  * 24/7 yield monitoring with Telegram notifications
  */
 
+require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const db = require('./database');
 const { queryFarmOpportunities } = require('./query-opportunities');
+const { scanWalletPositions } = require('./position-scanner');
+const positionCommands = require('./commands/positions');
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8466127519:AAGi_Xk1QiQCiZWkEWXPRRBdijgUn0EMTH0';
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 // Initialize bot
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
@@ -378,6 +381,27 @@ bot.on('callback_query', async (query) => {
       );
     }
 
+    // Position-related callbacks
+    if (data.startsWith('view_position_')) {
+      await positionCommands.handleViewPosition(bot, query);
+      return;
+    }
+
+    if (data.startsWith('view_history_')) {
+      await positionCommands.handleViewHistory(bot, query);
+      return;
+    }
+
+    if (data === 'refresh_positions') {
+      await positionCommands.handleRefreshPositions(bot, query);
+      return;
+    }
+
+    if (data === 'back_to_positions') {
+      await positionCommands.handleBackToPositions(bot, query);
+      return;
+    }
+
   } catch (error) {
     console.error('Error in callback_query:', error);
     await bot.sendMessage(chatId, '❌ Error processing request. Please try again.');
@@ -625,9 +649,48 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
       chatId,
       `✅ *Wallet Connected!*\n\n` +
       `Address: \`${walletAddress}\`\n\n` +
-      `You can now approve deposits directly from Telegram alerts.`,
+      `Scanning for existing positions...`,
       { parse_mode: 'Markdown' }
     );
+
+    // Scan for positions
+    try {
+      const positions = await scanWalletPositions(walletAddress);
+
+      if (positions.length > 0) {
+        // Store positions in database
+        for (const position of positions) {
+          await db.createOrUpdatePosition(user.id, position);
+        }
+
+        const totalValue = positions.reduce((sum, p) => sum + (p.currentValue || 0), 0);
+
+        await bot.sendMessage(
+          chatId,
+          `🔍 *Position Scan Complete*\n\n` +
+          `Found ${positions.length} active position(s)!\n` +
+          `Total value: $${totalValue.toFixed(2)}\n\n` +
+          `Use /positions to view details`,
+          { parse_mode: 'Markdown' }
+        );
+      } else {
+        await bot.sendMessage(
+          chatId,
+          `📊 No active positions found.\n\n` +
+          `Create a mandate to find yield opportunities:\n/create`,
+          { parse_mode: 'Markdown' }
+        );
+      }
+    } catch (scanError) {
+      console.error('Error scanning positions:', scanError);
+      await bot.sendMessage(
+        chatId,
+        `⚠️ Wallet connected, but position scan failed.\n\n` +
+        `The monitoring service will scan your wallet automatically.`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+
   } catch (error) {
     console.error('Error in /wallet:', error);
     await bot.sendMessage(chatId, '❌ Error connecting wallet.');
@@ -660,6 +723,14 @@ bot.onText(/\/stats/, async (msg) => {
 });
 
 // ==========================================
+// COMMAND: /positions
+// ==========================================
+
+bot.onText(/\/positions/, async (msg) => {
+  await positionCommands.handlePositionsCommand(bot, msg);
+});
+
+// ==========================================
 // COMMAND: /help
 // ==========================================
 
@@ -673,6 +744,7 @@ bot.onText(/\/help/, async (msg) => {
     `/start - Start the bot\n` +
     `/create - Create new yield mandate\n` +
     `/list - View your active mandates\n` +
+    `/positions - View your active positions\n` +
     `/opportunities - Check current top yields\n` +
     `/wallet [address] - Connect/view wallet\n` +
     `/stats - View notification stats\n` +
@@ -681,7 +753,8 @@ bot.onText(/\/help/, async (msg) => {
     `1. Create a mandate with your criteria\n` +
     `2. Bot monitors Gearbox every 15 minutes\n` +
     `3. Get alerts when yields match your mandate\n` +
-    `4. Approve deposits with one click\n\n` +
+    `4. Connect your wallet to track positions\n` +
+    `5. Get alerts for APY changes and liquidation risks\n\n` +
     `_Bot runs 24/7 on server - no need to keep anything open!_`,
     { parse_mode: 'Markdown' }
   );

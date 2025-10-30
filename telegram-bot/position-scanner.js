@@ -1,26 +1,17 @@
 /**
  * Position Scanner for Gearbox Pools
  * Detects user positions across Ethereum mainnet and Plasma chain
+ * Now with real blockchain integration using viem
  */
 
-const { queryFarmOpportunities } = require('./query-opportunities');
+const { fetchPoolAPY } = require('./query-opportunities');
+const blockchain = require('./utils/blockchain');
+const config = require('./config');
 
-// Known Gearbox pool addresses (will be expanded with real SDK later)
+// Use known pools from config
 const KNOWN_POOLS = {
-  // Ethereum Mainnet (chain_id: 1)
-  1: [
-    { address: '0x1234567890123456789012345678901234567890', token: 'USDC', name: 'Curve USDC Pool' },
-    { address: '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd', token: 'USDC', name: 'Yearn USDC Vault' },
-    { address: '0x9876543210987654321098765432109876543210', token: 'USDT', name: 'Aave USDT Pool' },
-    { address: '0xdef0123456789abcdef0123456789abcdef01234', token: 'WETH', name: 'Lido stETH Pool' },
-    { address: '0x5678abcd5678abcd5678abcd5678abcd5678abcd', token: 'wstETH', name: 'Curve wstETH Pool' }
-  ],
-  // Plasma Chain (chain_id: 9745)
-  9745: [
-    { address: '0x76309a9a56309104518847bba321c261b7b4a43f', token: 'USDT0', name: 'Invariant Group Plasma' },
-    { address: '0x53e4e9b8766969c43895839cc9c673bb6bc8ac97', token: 'USDT0', name: 'Edge UltraYield Plasma' },
-    { address: '0xb74760fd26400030620027dd29d19d74d514700e', token: 'USDT0', name: 'Hyperithm Plasma' }
-  ]
+  1: config.pools.ethereum,
+  9745: config.pools.plasma,
 };
 
 /**
@@ -35,40 +26,71 @@ async function scanWalletPositions(walletAddress) {
 
   // Scan each chain
   for (const [chainId, pools] of Object.entries(KNOWN_POOLS)) {
+    const chainIdNum = parseInt(chainId);
     console.log(`   Checking ${pools.length} pools on chain ${chainId}...`);
 
     for (const pool of pools) {
       try {
-        // TODO: Replace with real balance check
-        // const balance = await getPoolBalance(pool.address, walletAddress, chainId);
+        // Real balance check using viem
+        const sharesBalance = await blockchain.getPoolBalance(
+          pool.address,
+          walletAddress,
+          chainIdNum
+        );
 
-        // Mock: Simulate some positions being found
-        const mockBalance = Math.random();
-        if (mockBalance > 0.7) { // 30% chance of having position
-          const shares = 1000 + Math.random() * 9000; // Random 1000-10000
-          const depositedAmount = shares * 1.05; // Assume slight gain
+        const sharesFloat = parseFloat(sharesBalance);
 
-          // Fetch current APY for this pool
-          const currentAPY = await fetchPoolAPY(pool.token, parseInt(chainId));
-
-          positions.push({
-            poolAddress: pool.address,
-            poolName: pool.name,
-            chainId: parseInt(chainId),
-            underlyingToken: pool.token,
-            shares: shares,
-            depositedAmount: depositedAmount,
-            currentValue: depositedAmount * 1.02, // 2% gain
-            initialSupplyAPY: currentAPY - 0.5, // Assume was 0.5% lower initially
-            currentSupplyAPY: currentAPY,
-            initialBorrowAPY: null,
-            currentBorrowAPY: null,
-            netAPY: currentAPY,
-            leverage: 1
-          });
-
-          console.log(`      ✅ Found position: ${pool.name} (${shares.toFixed(2)} shares)`);
+        // Skip if no balance or below dust threshold
+        if (sharesFloat === 0 || sharesFloat < config.positions.dustThreshold) {
+          continue;
         }
+
+        console.log(`      ✅ Found position: ${pool.name} (${sharesFloat.toFixed(4)} shares)`);
+
+        // Convert shares to underlying asset value
+        const currentValue = await blockchain.convertSharesToAssets(
+          pool.address,
+          sharesBalance,
+          chainIdNum
+        );
+
+        // Fetch current APY for this pool
+        const apyData = await fetchPoolAPY(pool.address, chainIdNum);
+        const currentSupplyAPY = apyData?.supplyAPY || 0;
+
+        // Check if position is leveraged
+        const leverageDetails = await detectLeverageDetails(
+          pool.address,
+          walletAddress,
+          chainIdNum
+        );
+
+        // Calculate net APY (supply - borrow costs if leveraged)
+        let netAPY = currentSupplyAPY;
+        if (leverageDetails.isLeveraged) {
+          netAPY = (currentSupplyAPY * leverageDetails.leverage) -
+                   (leverageDetails.borrowAPY * (leverageDetails.leverage - 1));
+        }
+
+        positions.push({
+          poolAddress: pool.address,
+          poolName: pool.name,
+          chainId: chainIdNum,
+          underlyingToken: pool.token,
+          shares: sharesFloat,
+          depositedAmount: parseFloat(currentValue), // We don't know initial deposit, use current value
+          currentValue: parseFloat(currentValue),
+          initialSupplyAPY: currentSupplyAPY, // Assume same as current for new detection
+          currentSupplyAPY: currentSupplyAPY,
+          initialBorrowAPY: leverageDetails.borrowAPY,
+          currentBorrowAPY: leverageDetails.borrowAPY,
+          netAPY: netAPY,
+          leverage: leverageDetails.leverage,
+          healthFactor: leverageDetails.healthFactor || null,
+        });
+
+        console.log(`         Value: ${parseFloat(currentValue).toFixed(2)} ${pool.token}, APY: ${currentSupplyAPY.toFixed(2)}%`);
+
       } catch (error) {
         console.error(`      ❌ Error checking ${pool.name}:`, error.message);
       }
@@ -80,75 +102,60 @@ async function scanWalletPositions(walletAddress) {
 }
 
 /**
- * Fetch current APY for a pool based on token
- * @param {string} token - Token symbol (USDC, USDT0, etc.)
- * @param {number} chainId - Chain ID
- * @returns {number} Current supply APY
- */
-async function fetchPoolAPY(token, chainId) {
-  try {
-    // Query opportunities for this asset
-    const opportunities = await queryFarmOpportunities({ asset: token, min_apy: 0 });
-
-    if (opportunities.length > 0) {
-      // Return the first opportunity's APY
-      return opportunities[0].apy || opportunities[0].projAPY || 8.0;
-    }
-
-    // Fallback: return reasonable default based on token
-    const defaults = {
-      'USDC': 7.5,
-      'USDT': 7.2,
-      'USDT0': 15.0,
-      'WETH': 9.0,
-      'wstETH': 10.0
-    };
-
-    return defaults[token] || 8.0;
-  } catch (error) {
-    console.error(`Error fetching APY for ${token}:`, error.message);
-    return 8.0; // Default fallback
-  }
-}
-
-/**
- * Get pool balance for user (placeholder for real implementation)
- * @param {string} poolAddress - Pool contract address
- * @param {string} userAddress - User wallet address
- * @param {number} chainId - Chain ID
- * @returns {Promise<number>} User's pool shares
- */
-async function getPoolBalance(poolAddress, userAddress, chainId) {
-  // TODO: Implement real balance check using:
-  // - utils/pool-deposits.ts getPoolBalance() for Ethereum
-  // - viem createPublicClient() for Plasma
-
-  // For now, return mock data
-  return 0;
-}
-
-/**
  * Detect if position is leveraged (has borrow)
  * @param {string} poolAddress - Pool address
  * @param {string} userAddress - User address
- * @returns {Promise<Object>} Leverage details {leverage, borrowAPY}
+ * @param {number} chainId - Chain ID
+ * @returns {Promise<Object>} Leverage details {leverage, borrowAPY, healthFactor}
  */
-async function detectLeverageDetails(poolAddress, userAddress) {
-  // TODO: Check if user has credit account for this pool
-  // For now, assume all positions are non-leveraged (simple lending)
+async function detectLeverageDetails(poolAddress, userAddress, chainId) {
+  try {
+    // Check if user has credit account for this pool
+    const creditAccount = await blockchain.getCreditAccount(
+      poolAddress,
+      userAddress,
+      chainId
+    );
 
-  return {
-    isLeveraged: false,
-    leverage: 1,
-    borrowAPY: null,
-    borrowAmount: 0
-  };
+    if (!creditAccount) {
+      // No credit account = non-leveraged position
+      return {
+        isLeveraged: false,
+        leverage: 1,
+        borrowAPY: null,
+        borrowAmount: 0,
+        healthFactor: null,
+      };
+    }
+
+    // Get health factor for leveraged position
+    const healthFactor = await blockchain.getHealthFactor(
+      creditAccount.address,
+      chainId
+    );
+
+    return {
+      isLeveraged: true,
+      leverage: creditAccount.leverage || 1,
+      borrowAPY: creditAccount.borrowAPY || null,
+      borrowAmount: creditAccount.borrowAmount || 0,
+      healthFactor: healthFactor,
+    };
+  } catch (error) {
+    console.error(`   ⚠️ Error detecting leverage:`, error.message);
+    // Fallback: assume non-leveraged
+    return {
+      isLeveraged: false,
+      leverage: 1,
+      borrowAPY: null,
+      borrowAmount: 0,
+      healthFactor: null,
+    };
+  }
 }
 
 module.exports = {
   scanWalletPositions,
-  fetchPoolAPY,
-  getPoolBalance,
   detectLeverageDetails,
-  KNOWN_POOLS
+  KNOWN_POOLS,
 };

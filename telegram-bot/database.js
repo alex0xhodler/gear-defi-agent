@@ -87,6 +87,7 @@ class Database {
           current_borrow_apy REAL,
           net_apy REAL,
           leverage REAL DEFAULT 1,
+          health_factor REAL,
 
           last_apy_check DATETIME,
           deposited_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -127,13 +128,29 @@ class Database {
         )
       `);
 
+      // Health factor notifications log (prevents spam for liquidation alerts)
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS health_factor_notifications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          position_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          health_factor REAL NOT NULL,
+          severity TEXT NOT NULL,
+          sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (position_id) REFERENCES positions(id),
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+      `);
+
       // Index for faster lookups
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_mandates_active ON mandates(active, signed)`);
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recent ON notifications(mandate_id, sent_at)`);
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_positions_active ON positions(active, user_id)`);
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_positions_apy_check ON positions(last_apy_check)`);
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_positions_health_factor ON positions(health_factor)`);
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_apy_history_pool ON apy_history(pool_address, recorded_at)`);
-      this.db.run(`CREATE INDEX IF NOT EXISTS idx_apy_notifications_recent ON apy_notifications(position_id, sent_at)`, (err) => {
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_apy_notifications_recent ON apy_notifications(position_id, sent_at)`);
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_health_notifications_recent ON health_factor_notifications(position_id, sent_at)`, (err) => {
         if (err) {
           console.error('❌ Error creating indexes:', err.message);
         } else {
@@ -357,9 +374,9 @@ class Database {
           user_id, pool_address, chain_id, underlying_token,
           shares, deposited_amount, current_value,
           initial_supply_apy, current_supply_apy,
-          initial_borrow_apy, current_borrow_apy, net_apy, leverage,
+          initial_borrow_apy, current_borrow_apy, net_apy, leverage, health_factor,
           last_apy_check, deposited_at, last_updated
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id, pool_address, chain_id) DO UPDATE SET
           shares = excluded.shares,
           current_value = excluded.current_value,
@@ -367,13 +384,14 @@ class Database {
           current_borrow_apy = excluded.current_borrow_apy,
           net_apy = excluded.net_apy,
           leverage = excluded.leverage,
+          health_factor = excluded.health_factor,
           last_apy_check = CURRENT_TIMESTAMP,
           last_updated = CURRENT_TIMESTAMP`,
         [
           userId, position.poolAddress, position.chainId, position.underlyingToken,
           position.shares, position.depositedAmount, position.currentValue,
           position.initialSupplyAPY, position.currentSupplyAPY,
-          position.initialBorrowAPY, position.currentBorrowAPY, position.netAPY, position.leverage
+          position.initialBorrowAPY, position.currentBorrowAPY, position.netAPY, position.leverage, position.healthFactor
         ],
         function(err) {
           if (err) return reject(err);
@@ -504,6 +522,207 @@ class Database {
         function(err) {
           if (err) return reject(err);
           resolve({ id: this.lastID });
+        }
+      );
+    });
+  }
+
+  // ==========================================
+  // HELPER METHODS FOR POSITION MONITORING
+  // ==========================================
+
+  /**
+   * Get all users who have connected wallets
+   * @returns {Promise<Array>} Users with wallet addresses
+   */
+  getUsersWithWallets() {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT id, telegram_chat_id, wallet_address
+         FROM users
+         WHERE wallet_address IS NOT NULL AND wallet_address != ''`,
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
+        }
+      );
+    });
+  }
+
+  /**
+   * Get positions that need APY check (not checked in last X minutes)
+   * @param {number} minutesSinceCheck - Minutes since last check
+   * @returns {Promise<Array>} Positions needing check
+   */
+  getPositionsNeedingAPYCheck(minutesSinceCheck = 15) {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT p.*, u.telegram_chat_id, u.wallet_address
+         FROM positions p
+         JOIN users u ON p.user_id = u.id
+         WHERE p.active = 1
+           AND (p.last_apy_check IS NULL
+                OR datetime(p.last_apy_check) < datetime('now', '-${minutesSinceCheck} minutes'))`,
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
+        }
+      );
+    });
+  }
+
+  /**
+   * Update position's current value based on shares
+   * @param {number} positionId - Position ID
+   * @param {number} currentValue - New current value
+   * @returns {Promise<void>}
+   */
+  updatePositionValue(positionId, currentValue) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `UPDATE positions
+         SET current_value = ?, last_updated = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [currentValue, positionId],
+        (err) => {
+          if (err) return reject(err);
+          resolve();
+        }
+      );
+    });
+  }
+
+  /**
+   * Update position's health factor (for leveraged positions)
+   * @param {number} positionId - Position ID
+   * @param {number} healthFactor - New health factor
+   * @returns {Promise<void>}
+   */
+  updatePositionHealthFactor(positionId, healthFactor) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `UPDATE positions
+         SET health_factor = ?, last_updated = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [healthFactor, positionId],
+        (err) => {
+          if (err) return reject(err);
+          resolve();
+        }
+      );
+    });
+  }
+
+  /**
+   * Get APY trend for a position (increasing, decreasing, or stable)
+   * @param {string} poolAddress - Pool address
+   * @param {number} chainId - Chain ID
+   * @param {number} days - Days to analyze
+   * @returns {Promise<Object>} Trend data
+   */
+  async getAPYTrend(poolAddress, chainId, days = 7) {
+    const history = await this.getAPYHistory(poolAddress, chainId, days);
+
+    if (history.length < 2) {
+      return { trend: 'unknown', change: 0, history };
+    }
+
+    const latest = history[0].supply_apy;
+    const oldest = history[history.length - 1].supply_apy;
+    const change = latest - oldest;
+
+    let trend = 'stable';
+    if (Math.abs(change) > 0.5) {
+      trend = change > 0 ? 'increasing' : 'decreasing';
+    }
+
+    return { trend, change, history };
+  }
+
+  /**
+   * Get positions with low health factor (liquidation risk)
+   * @param {number} threshold - Health factor threshold (default 1.5)
+   * @returns {Promise<Array>} At-risk positions
+   */
+  getPositionsWithLowHealthFactor(threshold = 1.5) {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT p.*, u.telegram_chat_id, u.wallet_address
+         FROM positions p
+         JOIN users u ON p.user_id = u.id
+         WHERE p.active = 1
+           AND p.health_factor IS NOT NULL
+           AND p.health_factor < ?
+         ORDER BY p.health_factor ASC`,
+        [threshold],
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
+        }
+      );
+    });
+  }
+
+  /**
+   * Log health factor notification (spam prevention)
+   * @param {number} positionId - Position ID
+   * @param {number} userId - User ID
+   * @param {number} healthFactor - Current health factor
+   * @param {string} severity - Severity level (warning, critical)
+   * @returns {Promise<Object>} Created notification
+   */
+  logHealthFactorNotification(positionId, userId, healthFactor, severity) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `INSERT INTO health_factor_notifications (position_id, user_id, health_factor, severity)
+         VALUES (?, ?, ?, ?)`,
+        [positionId, userId, healthFactor, severity],
+        function(err) {
+          if (err) return reject(err);
+          resolve({ id: this.lastID });
+        }
+      );
+    });
+  }
+
+  /**
+   * Check if user was recently notified about health factor
+   * @param {number} positionId - Position ID
+   * @param {number} hoursAgo - Hours since last notification
+   * @returns {Promise<boolean>} True if recently notified
+   */
+  wasNotifiedAboutHealthFactor(positionId, hoursAgo = 1) {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        `SELECT id FROM health_factor_notifications
+         WHERE position_id = ?
+           AND datetime(sent_at) > datetime('now', '-${hoursAgo} hours')`,
+        [positionId],
+        (err, row) => {
+          if (err) return reject(err);
+          resolve(!!row);
+        }
+      );
+    });
+  }
+
+  /**
+   * Get notification statistics for a user
+   * @param {number} userId - User ID
+   * @returns {Promise<Object>} Notification statistics
+   */
+  async getNotificationStats(userId) {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        `SELECT
+           (SELECT COUNT(*) FROM notifications WHERE user_id = ?) as mandate_notifications,
+           (SELECT COUNT(*) FROM apy_notifications WHERE user_id = ?) as apy_notifications,
+           (SELECT COUNT(*) FROM health_factor_notifications WHERE user_id = ?) as health_notifications,
+           (SELECT COUNT(*) FROM positions WHERE user_id = ? AND active = 1) as active_positions`,
+        [userId, userId, userId, userId],
+        (err, row) => {
+          if (err) return reject(err);
+          resolve(row || { mandate_notifications: 0, apy_notifications: 0, health_notifications: 0, active_positions: 0 });
         }
       );
     });
