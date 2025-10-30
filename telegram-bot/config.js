@@ -180,11 +180,11 @@ module.exports = {
     // Enable APY change notifications
     apyChangeNotifications: true,
 
-    // Enable health factor monitoring
-    healthFactorMonitoring: true,
+    // Enable health factor monitoring (DISABLED - lending pools only)
+    healthFactorMonitoring: false,
 
-    // Enable leverage detection
-    leverageDetection: true,
+    // Enable leverage detection (DISABLED - lending pools only)
+    leverageDetection: false,
 
     // Enable mandate monitoring (existing feature)
     mandateMonitoring: true,

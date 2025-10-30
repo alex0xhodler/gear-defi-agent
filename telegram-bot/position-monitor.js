@@ -43,9 +43,9 @@ async function startMonitoring() {
   console.log(`   - Configured pools: ${totalPools} (${config.pools.ethereum.length} Ethereum, ${config.pools.plasma.length} Plasma)`);
   console.log(`   - Position scan interval: ${config.monitoring.positionScanInterval / 60000} minutes`);
   console.log(`   - APY check interval: ${config.monitoring.positionScanInterval / 60000} minutes`);
-  console.log(`   - Health factor check interval: ${config.monitoring.healthFactorCheckInterval / 60000} minutes`);
   console.log(`   - Minor APY change threshold: ${config.apy.minorChangeThreshold}%`);
   console.log(`   - Major APY change threshold: ${config.apy.majorChangeThreshold}%`);
+  console.log(`   - Mode: Lending pools only (no leverage/health factor monitoring)`);
 
   // Wait for database to be ready
   await db.waitForReady();
@@ -75,15 +75,7 @@ async function startMonitoring() {
     }
   }, config.monitoring.positionScanInterval);
 
-  setInterval(async () => {
-    try {
-      await checkHealthFactors();
-    } catch (error) {
-      console.error('❌ Error in health factor check:', error.message);
-    }
-  }, config.monitoring.healthFactorCheckInterval);
-
-  console.log('✅ Position monitoring service started');
+  console.log('✅ Position monitoring service started (lending pools only)');
 }
 
 /**
@@ -187,16 +179,12 @@ async function checkAPYChanges() {
         // Calculate APY change
         const changePercent = Math.abs(currentSupplyAPY - oldSupplyAPY);
 
-        // Update position APY
-        const netAPY = position.leverage > 1
-          ? (currentSupplyAPY * position.leverage) - (apyData.borrowAPY * (position.leverage - 1))
-          : currentSupplyAPY;
-
+        // Update position APY (lending pools only - no leverage calculations)
         await db.updatePositionAPY(
           position.id,
           currentSupplyAPY,
-          apyData.borrowAPY,
-          netAPY
+          null, // No borrow APY for lending
+          currentSupplyAPY // Net APY = Supply APY for lending
         );
 
         // Record APY history
@@ -243,70 +231,7 @@ async function checkAPYChanges() {
   }
 }
 
-/**
- * Check health factors for leveraged positions
- */
-async function checkHealthFactors() {
-  if (!config.features.healthFactorMonitoring) {
-    return;
-  }
-
-  console.log('\n⚠️  Checking health factors...');
-  lastHealthFactorCheck = new Date();
-
-  try {
-    const atRiskPositions = await db.getPositionsWithLowHealthFactor(
-      config.healthFactor.warningThreshold
-    );
-
-    console.log(`   Found ${atRiskPositions.length} positions with low health factor`);
-
-    for (const position of atRiskPositions) {
-      try {
-        const healthFactor = position.health_factor;
-
-        // Determine severity
-        let severity;
-        let emoji;
-        if (healthFactor < config.healthFactor.liquidationThreshold) {
-          severity = 'critical';
-          emoji = '🔴';
-        } else if (healthFactor < config.healthFactor.criticalThreshold) {
-          severity = 'high';
-          emoji = '🟠';
-        } else {
-          severity = 'warning';
-          emoji = '🟡';
-        }
-
-        // Check if already notified
-        const cooldownHours = config.healthFactor.notificationCooldown / (60 * 60 * 1000);
-        const alreadyNotified = await db.wasNotifiedAboutHealthFactor(
-          position.id,
-          cooldownHours
-        );
-
-        if (!alreadyNotified) {
-          console.log(`   ${emoji} ${severity.toUpperCase()} health factor: ${healthFactor.toFixed(2)}`);
-
-          await notifyLiquidationRisk(position, healthFactor, severity);
-          await db.logHealthFactorNotification(
-            position.id,
-            position.user_id,
-            healthFactor,
-            severity
-          );
-        }
-      } catch (error) {
-        console.error(`   ❌ Error checking health factor for position ${position.id}:`, error.message);
-      }
-    }
-
-    console.log('✅ Health factor check complete\n');
-  } catch (error) {
-    console.error('❌ Error checking health factors:', error.message);
-  }
-}
+// Health factor monitoring removed - not applicable for lending pools
 
 /**
  * Send APY change notification to user
@@ -344,60 +269,7 @@ async function notifyAPYChange(position, oldAPY, newAPY, changePercent, isMajor)
   }
 }
 
-/**
- * Send liquidation risk notification to user
- */
-async function notifyLiquidationRisk(position, healthFactor, severity) {
-  try {
-    let emoji, title, urgency;
-
-    if (severity === 'critical') {
-      emoji = '🔴';
-      title = 'CRITICAL LIQUIDATION RISK';
-      urgency = 'IMMEDIATE ACTION REQUIRED';
-    } else if (severity === 'high') {
-      emoji = '🟠';
-      title = 'HIGH LIQUIDATION RISK';
-      urgency = 'Action recommended';
-    } else {
-      emoji = '🟡';
-      title = 'Liquidation Warning';
-      urgency = 'Monitor closely';
-    }
-
-    const message = `${emoji} **${title}**\n\n` +
-      `${urgency}\n\n` +
-      `**${position.underlying_token} Position**\n` +
-      `Pool: ${position.pool_address.slice(0, 10)}...${position.pool_address.slice(-8)}\n` +
-      `Chain: ${position.chain_id === 1 ? 'Ethereum' : 'Plasma'}\n\n` +
-      `Health Factor: ${healthFactor.toFixed(2)}\n` +
-      `Leverage: ${position.leverage}x\n` +
-      `Current Value: ${position.current_value?.toFixed(2) || 'N/A'} ${position.underlying_token}\n\n` +
-      `⚠️ Health factor below ${config.healthFactor.liquidationThreshold} = liquidation\n\n` +
-      `Recommended actions:\n` +
-      `• Add more collateral\n` +
-      `• Reduce leverage\n` +
-      `• Close position`;
-
-    await bot.sendMessage(position.telegram_chat_id, message, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '🔗 Open Gearbox App', url: `https://app.gearbox.fi` },
-          ],
-          [
-            { text: '📊 View Position', callback_data: `view_position_${position.id}` },
-          ],
-        ],
-      },
-    });
-
-    console.log(`   ✅ Notified user ${position.telegram_chat_id} about liquidation risk`);
-  } catch (error) {
-    console.error(`   ❌ Error sending liquidation notification:`, error.message);
-  }
-}
+// Liquidation risk notification removed - not applicable for lending pools
 
 /**
  * Send position closed notification to user

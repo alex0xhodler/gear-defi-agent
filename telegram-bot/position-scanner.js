@@ -58,20 +58,7 @@ async function scanWalletPositions(walletAddress) {
         const apyData = await fetchPoolAPY(pool.address, chainIdNum);
         const currentSupplyAPY = apyData?.supplyAPY || 0;
 
-        // Check if position is leveraged
-        const leverageDetails = await detectLeverageDetails(
-          pool.address,
-          walletAddress,
-          chainIdNum
-        );
-
-        // Calculate net APY (supply - borrow costs if leveraged)
-        let netAPY = currentSupplyAPY;
-        if (leverageDetails.isLeveraged) {
-          netAPY = (currentSupplyAPY * leverageDetails.leverage) -
-                   (leverageDetails.borrowAPY * (leverageDetails.leverage - 1));
-        }
-
+        // Lending pools only - no leverage detection needed
         positions.push({
           poolAddress: pool.address,
           poolName: pool.name,
@@ -82,11 +69,11 @@ async function scanWalletPositions(walletAddress) {
           currentValue: parseFloat(currentValue),
           initialSupplyAPY: currentSupplyAPY, // Assume same as current for new detection
           currentSupplyAPY: currentSupplyAPY,
-          initialBorrowAPY: leverageDetails.borrowAPY,
-          currentBorrowAPY: leverageDetails.borrowAPY,
-          netAPY: netAPY,
-          leverage: leverageDetails.leverage,
-          healthFactor: leverageDetails.healthFactor || null,
+          initialBorrowAPY: null, // No borrowing in lending pools
+          currentBorrowAPY: null,
+          netAPY: currentSupplyAPY, // Same as supply APY for lending
+          leverage: 1, // No leverage in lending pools
+          healthFactor: null, // No health factor for lending deposits
         });
 
         console.log(`         Value: ${parseFloat(currentValue).toFixed(2)} ${pool.token}, APY: ${currentSupplyAPY.toFixed(2)}%`);
@@ -101,61 +88,7 @@ async function scanWalletPositions(walletAddress) {
   return positions;
 }
 
-/**
- * Detect if position is leveraged (has borrow)
- * @param {string} poolAddress - Pool address
- * @param {string} userAddress - User address
- * @param {number} chainId - Chain ID
- * @returns {Promise<Object>} Leverage details {leverage, borrowAPY, healthFactor}
- */
-async function detectLeverageDetails(poolAddress, userAddress, chainId) {
-  try {
-    // Check if user has credit account for this pool
-    const creditAccount = await blockchain.getCreditAccount(
-      poolAddress,
-      userAddress,
-      chainId
-    );
-
-    if (!creditAccount) {
-      // No credit account = non-leveraged position
-      return {
-        isLeveraged: false,
-        leverage: 1,
-        borrowAPY: null,
-        borrowAmount: 0,
-        healthFactor: null,
-      };
-    }
-
-    // Get health factor for leveraged position
-    const healthFactor = await blockchain.getHealthFactor(
-      creditAccount.address,
-      chainId
-    );
-
-    return {
-      isLeveraged: true,
-      leverage: creditAccount.leverage || 1,
-      borrowAPY: creditAccount.borrowAPY || null,
-      borrowAmount: creditAccount.borrowAmount || 0,
-      healthFactor: healthFactor,
-    };
-  } catch (error) {
-    console.error(`   ⚠️ Error detecting leverage:`, error.message);
-    // Fallback: assume non-leveraged
-    return {
-      isLeveraged: false,
-      leverage: 1,
-      borrowAPY: null,
-      borrowAmount: 0,
-      healthFactor: null,
-    };
-  }
-}
-
 module.exports = {
   scanWalletPositions,
-  detectLeverageDetails,
   KNOWN_POOLS,
 };

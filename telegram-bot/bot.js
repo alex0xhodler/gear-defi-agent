@@ -223,24 +223,49 @@ bot.on('callback_query', async (query) => {
       }
       return;
     } else if (data === 'menu_opportunities') {
-      await bot.sendMessage(chatId, '🔍 Scanning current opportunities...');
-      const opportunities = await queryFarmOpportunities({ asset: 'USDC', min_apy: 0 });
-      if (!opportunities || opportunities.length === 0) {
-        await bot.sendMessage(chatId, '❌ No opportunities found. Try again later.');
+      const user = await db.getOrCreateUser(chatId);
+      const mandates = await db.getUserMandates(user.id);
+
+      if (mandates.length === 0) {
+        await bot.sendMessage(
+          chatId,
+          `📋 *No Active Mandates*\n\n` +
+          `Create a mandate first to see matching opportunities!`,
+          { parse_mode: 'Markdown' }
+        );
         await showMainMenu(chatId);
-      } else {
-        const top3 = opportunities.slice(0, 3);
-        const opportunitiesText = top3
-          .map((opp, i) =>
-            `${i + 1}. *${opp.strategy || opp.pool_name}*\n` +
-            `   📈 APY: ${opp.projAPY?.toFixed(2) || opp.apy?.toFixed(2)}%\n` +
-            `   ⚡ Leverage: ${opp.leverage || opp.maxLeverage || 'N/A'}x\n` +
-            `   🌐 Chain: ${opp.chain}`
-          )
-          .join('\n\n');
-        await bot.sendMessage(chatId, `💎 *Top Opportunities Right Now:*\n\n${opportunitiesText}`, { parse_mode: 'Markdown' });
-        await showMainMenu(chatId);
+        return;
       }
+
+      await bot.sendMessage(chatId, `🔍 Scanning opportunities for your ${mandates.length} mandate${mandates.length > 1 ? 's' : ''}...`);
+
+      let hasResults = false;
+      let responseText = `💎 *Matching Opportunities:*\n\n`;
+
+      for (const mandate of mandates) {
+        const opportunities = await queryFarmOpportunities({
+          asset: mandate.asset,
+          min_apy: mandate.min_apy
+        });
+
+        if (opportunities && opportunities.length > 0) {
+          hasResults = true;
+          const top3 = opportunities.slice(0, 3);
+
+          responseText += `📋 *${mandate.asset}* (${mandate.min_apy}%+)\n`;
+          top3.forEach((opp, i) => {
+            responseText += `${i + 1}. ${opp.pool_name || opp.strategy} - ${(opp.projAPY || opp.apy).toFixed(2)}% (${opp.chain})\n`;
+          });
+          responseText += `\n`;
+        }
+      }
+
+      if (!hasResults) {
+        await bot.sendMessage(chatId, '❌ No opportunities found matching your mandates.');
+      } else {
+        await bot.sendMessage(chatId, responseText, { parse_mode: 'Markdown' });
+      }
+      await showMainMenu(chatId);
       return;
     } else if (data === 'menu_stats') {
       const user = await db.getOrCreateUser(chatId);
@@ -553,35 +578,61 @@ bot.onText(/\/opportunities/, async (msg) => {
   const chatId = msg.chat.id;
 
   try {
-    await bot.sendMessage(chatId, '🔍 Scanning current opportunities...');
+    const user = await db.getOrCreateUser(chatId);
+    const mandates = await db.getUserMandates(user.id);
 
-    // Query top opportunities
-    const opportunities = await queryFarmOpportunities({
-      asset: 'USDC',
-      min_apy: 0
-    });
-
-    if (!opportunities || opportunities.length === 0) {
-      await bot.sendMessage(chatId, '❌ No opportunities found. Try again later.');
+    if (mandates.length === 0) {
+      await bot.sendMessage(
+        chatId,
+        `📋 *No Active Mandates*\n\n` +
+        `You need to create a mandate first to see matching opportunities!\n\n` +
+        `Use /create to set up your first mandate.`,
+        { parse_mode: 'Markdown' }
+      );
       return;
     }
 
-    const top3 = opportunities.slice(0, 3);
+    await bot.sendMessage(chatId, `🔍 Scanning opportunities for your ${mandates.length} mandate${mandates.length > 1 ? 's' : ''}...`);
 
-    const opportunitiesText = top3
-      .map((opp, i) =>
-        `${i + 1}. *${opp.strategy || opp.pool_name}*\n` +
-        `   📈 APY: ${opp.projAPY?.toFixed(2) || opp.apy?.toFixed(2)}%\n` +
-        `   ⚡ Leverage: ${opp.leverage || opp.maxLeverage || 'N/A'}x\n` +
-        `   🌐 Chain: ${opp.chain}`
-      )
-      .join('\n\n');
+    let hasResults = false;
+    let responseText = `💎 *Opportunities Matching Your Mandates:*\n\n`;
 
-    await bot.sendMessage(
-      chatId,
-      `💎 *Top Opportunities Right Now:*\n\n${opportunitiesText}`,
-      { parse_mode: 'Markdown' }
-    );
+    // Query opportunities for each mandate
+    for (const mandate of mandates) {
+      const opportunities = await queryFarmOpportunities({
+        asset: mandate.asset,
+        min_apy: mandate.min_apy
+      });
+
+      if (opportunities && opportunities.length > 0) {
+        hasResults = true;
+        const top3 = opportunities.slice(0, 3);
+
+        responseText += `📋 *${mandate.asset}* (${mandate.min_apy}%+ APY)\n`;
+
+        top3.forEach((opp, i) => {
+          responseText += `${i + 1}. ${opp.pool_name || opp.strategy}\n`;
+          responseText += `   📈 ${(opp.projAPY || opp.apy).toFixed(2)}% APY\n`;
+          responseText += `   🌐 ${opp.chain}\n`;
+        });
+
+        responseText += `\n`;
+      } else {
+        responseText += `📋 *${mandate.asset}* (${mandate.min_apy}%+ APY)\n`;
+        responseText += `   No pools found meeting criteria\n\n`;
+      }
+    }
+
+    if (!hasResults) {
+      await bot.sendMessage(
+        chatId,
+        `❌ No opportunities found matching any of your mandates.\n\n` +
+        `Try lowering your minimum APY requirements or checking different assets.`
+      );
+    } else {
+      await bot.sendMessage(chatId, responseText, { parse_mode: 'Markdown' });
+    }
+
   } catch (error) {
     console.error('Error in /opportunities:', error);
     await bot.sendMessage(chatId, '❌ Error fetching opportunities. Please try again.');
