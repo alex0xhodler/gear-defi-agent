@@ -14,9 +14,9 @@ async function handlePositionsCommand(bot, msg) {
 
   try {
     // Get user from database
-    const user = await db.getUserByChatId(chatId.toString());
+    const user = await db.getOrCreateUser(chatId);
     if (!user) {
-      await bot.sendMessage(chatId, '❌ Please start the bot first with /start');
+      await bot.sendMessage(chatId, '❌ Error retrieving user data. Please try /start');
       return;
     }
 
@@ -119,7 +119,7 @@ async function handleViewPosition(bot, callbackQuery) {
   const positionId = parseInt(callbackQuery.data.split('_')[2]);
 
   try {
-    const user = await db.getUserByChatId(chatId.toString());
+    const user = await db.getOrCreateUser(chatId);
     if (!user) {
       await bot.answerCallbackQuery(callbackQuery.id, { text: 'User not found' });
       return;
@@ -224,7 +224,7 @@ async function handleViewHistory(bot, callbackQuery) {
   const positionId = parseInt(callbackQuery.data.split('_')[2]);
 
   try {
-    const user = await db.getUserByChatId(chatId.toString());
+    const user = await db.getOrCreateUser(chatId);
     if (!user) {
       await bot.answerCallbackQuery(callbackQuery.id, { text: 'User not found' });
       return;
