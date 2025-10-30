@@ -27,7 +27,7 @@
 - PM2 (for production deployment)
 - Telegram Bot Token (from @BotFather)
 - Ethereum RPC URL (Alchemy, Infura, or public)
-- Plasma RPC URL (default: https://rpc.plm.xyz)
+- Plasma RPC URL (default: https://rpc.plasma.to)
 
 ## Quick Start (Local Development)
 
@@ -100,7 +100,7 @@ nano .env
 
 # Optional (uses public RPCs if not set):
 # ETHEREUM_RPC_URL=your_alchemy_or_infura_url
-# PLASMA_RPC_URL=https://rpc.plm.xyz
+# PLASMA_RPC_URL=https://rpc.plasma.to
 
 # Verify env vars are loaded
 node -e "require('dotenv').config(); console.log(process.env.TELEGRAM_BOT_TOKEN)"

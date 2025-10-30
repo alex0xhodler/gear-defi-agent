@@ -186,7 +186,7 @@ async function handleViewPosition(bot, callbackQuery) {
     // Explorer link
     const explorerUrl = position.chain_id === 1
       ? `https://etherscan.io/address/${position.pool_address}`
-      : `https://explorer.plm.xyz/address/${position.pool_address}`;
+      : `https://plasmascan.to/address/${position.pool_address}`;
 
     await bot.editMessageText(message, {
       chat_id: chatId,

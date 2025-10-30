@@ -74,8 +74,8 @@ module.exports = {
       plasma: {
         id: 9745,
         name: 'Plasma',
-        rpcUrl: process.env.PLASMA_RPC_URL || 'https://rpc.plm.xyz',
-        explorerUrl: 'https://explorer.plm.xyz',
+        rpcUrl: process.env.PLASMA_RPC_URL || 'https://rpc.plasma.to',
+        explorerUrl: 'https://plasmascan.to',
         gearboxApiUrl: 'https://api-plasma.gearbox.fi/v1',
       },
     },
