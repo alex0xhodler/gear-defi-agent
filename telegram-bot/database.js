@@ -68,9 +68,72 @@ class Database {
         )
       `);
 
+      // Positions table (tracks user deposits in pools)
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS positions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          pool_address TEXT NOT NULL,
+          chain_id INTEGER NOT NULL,
+          underlying_token TEXT NOT NULL,
+
+          shares REAL NOT NULL,
+          deposited_amount REAL NOT NULL,
+          current_value REAL,
+
+          initial_supply_apy REAL NOT NULL,
+          current_supply_apy REAL,
+          initial_borrow_apy REAL,
+          current_borrow_apy REAL,
+          net_apy REAL,
+          leverage REAL DEFAULT 1,
+
+          last_apy_check DATETIME,
+          deposited_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+          active BOOLEAN DEFAULT 1,
+
+          FOREIGN KEY (user_id) REFERENCES users(id),
+          UNIQUE(user_id, pool_address, chain_id)
+        )
+      `);
+
+      // APY history table (for trend analysis)
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS apy_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          pool_address TEXT NOT NULL,
+          chain_id INTEGER NOT NULL,
+          supply_apy REAL NOT NULL,
+          borrow_apy REAL,
+          tvl REAL,
+          recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // APY change notifications log (prevents spam)
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS apy_notifications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          position_id INTEGER NOT NULL,
+          user_id INTEGER NOT NULL,
+          change_type TEXT NOT NULL,
+          old_apy REAL NOT NULL,
+          new_apy REAL NOT NULL,
+          change_percent REAL NOT NULL,
+          sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (position_id) REFERENCES positions(id),
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+      `);
+
       // Index for faster lookups
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_mandates_active ON mandates(active, signed)`);
-      this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recent ON notifications(mandate_id, sent_at)`, (err) => {
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recent ON notifications(mandate_id, sent_at)`);
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_positions_active ON positions(active, user_id)`);
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_positions_apy_check ON positions(last_apy_check)`);
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_apy_history_pool ON apy_history(pool_address, recorded_at)`);
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_apy_notifications_recent ON apy_notifications(position_id, sent_at)`, (err) => {
         if (err) {
           console.error('❌ Error creating indexes:', err.message);
         } else {
@@ -278,6 +341,169 @@ class Database {
         (err, rows) => {
           if (err) return reject(err);
           resolve(rows[0]);
+        }
+      );
+    });
+  }
+
+  // ==========================================
+  // POSITION OPERATIONS
+  // ==========================================
+
+  createOrUpdatePosition(userId, position) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `INSERT INTO positions (
+          user_id, pool_address, chain_id, underlying_token,
+          shares, deposited_amount, current_value,
+          initial_supply_apy, current_supply_apy,
+          initial_borrow_apy, current_borrow_apy, net_apy, leverage,
+          last_apy_check, deposited_at, last_updated
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, pool_address, chain_id) DO UPDATE SET
+          shares = excluded.shares,
+          current_value = excluded.current_value,
+          current_supply_apy = excluded.current_supply_apy,
+          current_borrow_apy = excluded.current_borrow_apy,
+          net_apy = excluded.net_apy,
+          leverage = excluded.leverage,
+          last_apy_check = CURRENT_TIMESTAMP,
+          last_updated = CURRENT_TIMESTAMP`,
+        [
+          userId, position.poolAddress, position.chainId, position.underlyingToken,
+          position.shares, position.depositedAmount, position.currentValue,
+          position.initialSupplyAPY, position.currentSupplyAPY,
+          position.initialBorrowAPY, position.currentBorrowAPY, position.netAPY, position.leverage
+        ],
+        function(err) {
+          if (err) return reject(err);
+          resolve({ id: this.lastID });
+        }
+      );
+    });
+  }
+
+  getUserPositions(userId) {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT * FROM positions
+         WHERE user_id = ? AND active = 1
+         ORDER BY deposited_at DESC`,
+        [userId],
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
+        }
+      );
+    });
+  }
+
+  getActivePositions() {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT p.*, u.telegram_chat_id, u.wallet_address
+         FROM positions p
+         JOIN users u ON p.user_id = u.id
+         WHERE p.active = 1`,
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
+        }
+      );
+    });
+  }
+
+  updatePositionAPY(positionId, supplyAPY, borrowAPY, netAPY) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `UPDATE positions
+         SET current_supply_apy = ?, current_borrow_apy = ?, net_apy = ?,
+             last_apy_check = CURRENT_TIMESTAMP, last_updated = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [supplyAPY, borrowAPY, netAPY, positionId],
+        (err) => {
+          if (err) return reject(err);
+          resolve();
+        }
+      );
+    });
+  }
+
+  deactivatePosition(positionId) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `UPDATE positions SET active = 0 WHERE id = ?`,
+        [positionId],
+        (err) => {
+          if (err) return reject(err);
+          resolve();
+        }
+      );
+    });
+  }
+
+  // ==========================================
+  // APY HISTORY OPERATIONS
+  // ==========================================
+
+  recordAPYHistory(poolAddress, chainId, supplyAPY, borrowAPY, tvl) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `INSERT INTO apy_history (pool_address, chain_id, supply_apy, borrow_apy, tvl)
+         VALUES (?, ?, ?, ?, ?)`,
+        [poolAddress, chainId, supplyAPY, borrowAPY, tvl],
+        function(err) {
+          if (err) return reject(err);
+          resolve({ id: this.lastID });
+        }
+      );
+    });
+  }
+
+  getAPYHistory(poolAddress, chainId, days = 7) {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT * FROM apy_history
+         WHERE pool_address = ? AND chain_id = ?
+           AND datetime(recorded_at) > datetime('now', '-${days} days')
+         ORDER BY recorded_at DESC`,
+        [poolAddress, chainId],
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
+        }
+      );
+    });
+  }
+
+  // ==========================================
+  // APY CHANGE NOTIFICATION OPERATIONS
+  // ==========================================
+
+  wasNotifiedAboutAPYChange(positionId, hoursAgo = 6) {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        `SELECT id FROM apy_notifications
+         WHERE position_id = ?
+           AND datetime(sent_at) > datetime('now', '-${hoursAgo} hours')`,
+        [positionId],
+        (err, row) => {
+          if (err) return reject(err);
+          resolve(!!row);
+        }
+      );
+    });
+  }
+
+  logAPYChangeNotification(positionId, userId, changeType, oldAPY, newAPY, changePercent) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `INSERT INTO apy_notifications (position_id, user_id, change_type, old_apy, new_apy, change_percent)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [positionId, userId, changeType, oldAPY, newAPY, changePercent],
+        function(err) {
+          if (err) return reject(err);
+          resolve({ id: this.lastID });
         }
       );
     });
