@@ -17,6 +17,22 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 console.log('🤖 Gearbox Sigma Bot starting...');
 
+// Set bot command menu (appears when user types "/" in chat)
+bot.setMyCommands([
+  { command: 'start', description: '🏠 Start the bot and view main menu' },
+  { command: 'create', description: '➕ Create a new yield mandate' },
+  { command: 'list', description: '📋 View your active mandates' },
+  { command: 'positions', description: '💼 View your active positions' },
+  { command: 'opportunities', description: '💎 Check current top yields' },
+  { command: 'wallet', description: '💳 Connect or view your wallet' },
+  { command: 'stats', description: '📊 View your notification stats' },
+  { command: 'help', description: '❓ Show help and instructions' }
+]).then(() => {
+  console.log('✅ Bot command menu configured');
+}).catch(err => {
+  console.error('❌ Error setting bot commands:', err);
+});
+
 // Session storage for multi-step flows (in-memory, resets on restart)
 const sessions = new Map();
 
@@ -37,7 +53,7 @@ bot.onText(/\/start/, async (msg) => {
       await bot.sendMessage(
         chatId,
         `👋 *Welcome to Gearbox Sigma Agent!*\n\n` +
-        `I'm your 24/7 DeFi yield hunter. I'll watch Gearbox Protocol opportunities and alert you when yields match your mandates.\n\n` +
+        `I'm your 24/7 DeFi yield hunter. I'll watch Gearbox Protocol lending pools and alert you when yields match your mandates.\n\n` +
         `🚀 *Quick Start:* Choose a ready-made template or create your own custom mandate!`,
         { parse_mode: 'Markdown' }
       );
@@ -50,13 +66,13 @@ bot.onText(/\/start/, async (msg) => {
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '🛡️ Conservative (5% APY, Low Risk)', callback_data: 'setup_default_conservative' }
+                { text: '🛡️ Conservative (3%+ APY)', callback_data: 'setup_default_conservative' }
               ],
               [
-                { text: '⚖️ Balanced (7% APY, Medium Risk)', callback_data: 'setup_default_balanced' }
+                { text: '⚖️ Balanced (7%+ APY)', callback_data: 'setup_default_balanced' }
               ],
               [
-                { text: '🚀 Aggressive (12% APY, High Risk)', callback_data: 'setup_default_aggressive' }
+                { text: '🚀 Aggressive (12%+ APY)', callback_data: 'setup_default_aggressive' }
               ],
               [
                 { text: '🎨 Custom Mandate', callback_data: 'menu_create' }
@@ -65,6 +81,16 @@ bot.onText(/\/start/, async (msg) => {
           }
         }
       );
+
+      // Encourage wallet connection for first-time users
+      if (!user.wallet_address) {
+        await bot.sendMessage(
+          chatId,
+          `💡 *Pro Tip:* Connect your wallet to track your positions!\n\n` +
+          `Use /wallet to connect and I'll monitor your active positions, APY changes, and health factors.`,
+          { parse_mode: 'Markdown' }
+        );
+      }
     } else {
       // Returning user - show main menu
       await bot.sendMessage(
@@ -74,6 +100,16 @@ bot.onText(/\/start/, async (msg) => {
         `I'm watching for opportunities 24/7! 🔍`,
         { parse_mode: 'Markdown' }
       );
+
+      // Remind returning users without wallet to connect
+      if (!user.wallet_address) {
+        await bot.sendMessage(
+          chatId,
+          `💳 *Wallet not connected*\n\n` +
+          `Connect your wallet with /wallet to enable position tracking and receive alerts for APY changes and liquidation risks.`,
+          { parse_mode: 'Markdown' }
+        );
+      }
 
       await showMainMenu(chatId);
     }
@@ -275,24 +311,8 @@ bot.on('callback_query', async (query) => {
         chatId,
         `Great! You selected *${asset}*.\n\n` +
         `What's your minimum acceptable APY?\n` +
-        `(e.g., send "6.5" for 6.5% APY)`,
-        { parse_mode: 'Markdown' }
-      );
-    }
-
-    // Handle risk selection
-    if (data.startsWith('risk_')) {
-      const risk = data.replace('risk_', '');
-      const session = sessions.get(chatId) || {};
-      session.risk = risk;
-      session.step = 'maxLeverage';
-      sessions.set(chatId, session);
-
-      await bot.sendMessage(
-        chatId,
-        `Risk level: *${risk}*\n\n` +
-        `What's your maximum leverage?\n` +
-        `(e.g., send "2" for 2x leverage, or "5" for 5x)`,
+        `(e.g., send "5" for 5% APY, or "10" for 10% APY)\n\n` +
+        `_Note: Risk and leverage will be auto-configured based on your APY target_`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -313,10 +333,7 @@ bot.on('callback_query', async (query) => {
       await bot.sendMessage(
         chatId,
         `✅ *Mandate Activated!*\n\n` +
-        `I'm now watching for *${mandate.asset}* opportunities with:\n` +
-        `📈 Min APY: ${mandate.minAPY}%\n` +
-        `⚡ Max Leverage: ${mandate.maxLeverage}x\n` +
-        `🛡️ Risk: ${mandate.risk}\n\n` +
+        `I'm now watching for *${mandate.asset}* opportunities with min ${mandate.minAPY}% APY.\n\n` +
         `You'll get a Telegram alert when I find matching opportunities! 🚀\n\n` +
         `_Monitoring runs every 15 minutes_`,
         { parse_mode: 'Markdown' }
@@ -431,63 +448,24 @@ bot.on('message', async (msg) => {
         return;
       }
 
+      // Apply smart defaults
       session.minAPY = minAPY;
-      session.step = 'risk';
-      sessions.set(chatId, session);
 
-      await bot.sendMessage(
-        chatId,
-        `Min APY: *${minAPY}%*\n\n` +
-        `What's your risk tolerance?`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '🟢 Low', callback_data: 'risk_Low' },
-                { text: '🟡 Medium', callback_data: 'risk_Medium' },
-                { text: '🔴 High', callback_data: 'risk_High' }
-              ]
-            ]
-          }
-        }
-      );
-    }
-
-    // Step: Enter max leverage
-    else if (session.step === 'maxLeverage') {
-      const maxLeverage = parseFloat(text);
-      if (isNaN(maxLeverage) || maxLeverage < 1 || maxLeverage > 10) {
-        await bot.sendMessage(chatId, '⚠️ Please enter leverage between 1 and 10.');
-        return;
+      // Smart defaults for lending pools (no leverage involved)
+      if (minAPY < 5) {
+        session.risk = 'Low';
+      } else if (minAPY < 10) {
+        session.risk = 'Medium';
+      } else {
+        session.risk = 'High';
       }
+      session.maxLeverage = 1; // Lending pools are non-leveraged
+      session.maxPosition = 50000; // Default $50k max position for lending
 
-      session.maxLeverage = maxLeverage;
-      session.step = 'maxPosition';
-      sessions.set(chatId, session);
-
-      await bot.sendMessage(
-        chatId,
-        `Max leverage: *${maxLeverage}x*\n\n` +
-        `What's your maximum position size in USD?\n` +
-        `(e.g., send "10000" for $10,000)`,
-        { parse_mode: 'Markdown' }
-      );
-    }
-
-    // Step: Enter max position
-    else if (session.step === 'maxPosition') {
-      const maxPosition = parseFloat(text);
-      if (isNaN(maxPosition) || maxPosition <= 0) {
-        await bot.sendMessage(chatId, '⚠️ Please enter a valid position size.');
-        return;
-      }
-
-      session.maxPosition = maxPosition;
       session.step = 'confirm';
       sessions.set(chatId, session);
 
-      // Create mandate in database
+      // Create mandate in database immediately
       const mandate = {
         asset: session.asset,
         minAPY: session.minAPY,
@@ -504,11 +482,8 @@ bot.on('message', async (msg) => {
       await bot.sendMessage(
         chatId,
         `📋 *Mandate Preview*\n\n` +
-        `💰 Asset: ${mandate.asset}\n` +
-        `📈 Min APY: ${mandate.minAPY}%\n` +
-        `⚡ Max Leverage: ${mandate.maxLeverage}x\n` +
-        `🛡️ Risk: ${mandate.risk}\n` +
-        `💵 Max Position: $${mandate.maxPosition.toLocaleString()}\n\n` +
+        `💰 Asset: *${mandate.asset}*\n` +
+        `📈 Min APY: *${mandate.minAPY}%*\n\n` +
         `Looks good?`,
         {
           parse_mode: 'Markdown',
@@ -825,24 +800,24 @@ async function setupDefaultMandate(chatId, template) {
     const templates = {
       'conservative': {
         asset: 'USDC',
-        minAPY: 5.0,
-        maxLeverage: 1.5,
+        minAPY: 3.0,
+        maxLeverage: 1,
         risk: 'Low',
-        maxPosition: 5000
+        maxPosition: 10000
       },
       'balanced': {
-        asset: 'USDC',
+        asset: 'USDT0',
         minAPY: 7.0,
-        maxLeverage: 2.5,
+        maxLeverage: 1,
         risk: 'Medium',
-        maxPosition: 10000
+        maxPosition: 25000
       },
       'aggressive': {
         asset: 'USDT0',
         minAPY: 12.0,
-        maxLeverage: 5,
+        maxLeverage: 1,
         risk: 'High',
-        maxPosition: 15000
+        maxPosition: 50000
       }
     };
 
@@ -855,10 +830,7 @@ async function setupDefaultMandate(chatId, template) {
     await bot.sendMessage(
       chatId,
       `✅ *${template.charAt(0).toUpperCase() + template.slice(1)} Mandate Activated!*\n\n` +
-      `I'm now watching for *${mandate.asset}* opportunities with:\n` +
-      `📈 Min APY: ${mandate.minAPY}%\n` +
-      `⚡ Max Leverage: ${mandate.maxLeverage}x\n` +
-      `🛡️ Risk: ${mandate.risk}\n\n` +
+      `I'm now watching for *${mandate.asset}* lending pools with ${mandate.minAPY}%+ APY.\n\n` +
       `You'll get alerts when matching opportunities appear! 🚀`,
       { parse_mode: 'Markdown' }
     );

@@ -65,11 +65,12 @@ async function checkAllMandates() {
           // Filter opportunities that meet mandate criteria
           const matchingOpportunities = opportunities.filter(opp => {
             const oppAPY = opp.projAPY || opp.apy || 0;
-            const oppLeverage = opp.leverage || opp.maxLeverage || 1;
+            // Check if pool supports leverage up to the mandate's max
+            const poolMaxLeverage = opp.maxLeverage || 1;
 
             return (
               oppAPY >= mandate.min_apy &&
-              oppLeverage <= mandate.max_leverage
+              poolMaxLeverage >= 1 // Pool must support at least basic deposits
             );
           });
 

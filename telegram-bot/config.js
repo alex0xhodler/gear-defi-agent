@@ -103,13 +103,24 @@ module.exports = {
       // },
     ],
     plasma: [
-      // Uncomment and add real Plasma pool addresses here
-      // {
-      //   address: '0x890a69EF363C9c7BdD5E36eb95Ceb569F63ACbF6',
-      //   name: 'USDT0 Pool',
-      //   token: 'USDT0',
-      //   decimals: 6,
-      // },
+      {
+        address: '0x53e4e9b8766969c43895839cc9c673bb6bc8ac97',
+        name: 'Edge UltraYield',
+        token: 'USDT0',
+        decimals: 6,
+      },
+      {
+        address: '0x76309a9a56309104518847bba321c261b7b4a43f',
+        name: 'Invariant Group',
+        token: 'USDT0',
+        decimals: 6,
+      },
+      {
+        address: '0xb74760fd26400030620027dd29d19d74d514700e',
+        name: 'Hyperithm',
+        token: 'USDT0',
+        decimals: 6,
+      },
     ],
   },
 
