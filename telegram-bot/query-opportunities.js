@@ -160,25 +160,26 @@ async function fetchPoolAPY(poolAddress, chainId) {
 
     return apyData;
   } catch (error) {
-    console.error(`   ❌ Error fetching APY for pool ${poolAddress}:`, error.message);
+    console.error(`   ❌ Error fetching APY from API for pool ${poolAddress}:`, error.message);
 
-    // Fallback to mock APY for Plasma pools (API may not have data yet)
-    if (chainId === 9745) {
-      console.log(`   ⚠️  Using fallback APY for Plasma pool`);
-      const fallbackAPY = {
-        supplyAPY: 15.0, // Default Plasma pool APY estimate
-        borrowAPY: 0,
-        maxLeverage: 1,
-        tvl: 0,
-      };
+    // Fallback to on-chain APY fetching (especially for Plasma pools)
+    console.log(`   🔗 Fetching APY from on-chain data...`);
 
-      // Cache fallback for short duration
-      apyCache.set(cacheKey, {
-        data: fallbackAPY,
-        timestamp: Date.now(),
-      });
+    try {
+      const blockchain = require('./utils/blockchain');
+      const onChainAPY = await blockchain.getPoolAPY(poolAddress, chainId);
 
-      return fallbackAPY;
+      if (onChainAPY && onChainAPY.supplyAPY !== null) {
+        // Cache on-chain result
+        apyCache.set(cacheKey, {
+          data: onChainAPY,
+          timestamp: Date.now(),
+        });
+
+        return onChainAPY;
+      }
+    } catch (onChainError) {
+      console.error(`   ❌ Error fetching on-chain APY:`, onChainError.message);
     }
 
     return null;

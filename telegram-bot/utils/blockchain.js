@@ -199,24 +199,57 @@ async function convertSharesToAssets(poolAddress, shares, chainId) {
 }
 
 /**
- * Get pool APY from the pool contract or Gearbox API
+ * Get pool APY from the pool contract using supplyRate()
  * @param {string} poolAddress - Gearbox pool contract address
  * @param {number} chainId - Chain ID
- * @returns {Promise<Object>} APY data { supplyAPY, borrowAPY }
+ * @returns {Promise<Object>} APY data { supplyAPY, borrowAPY, maxLeverage, tvl }
  */
 async function getPoolAPY(poolAddress, chainId) {
   try {
-    // TODO: Implement real APY fetching from Gearbox API or on-chain
-    // For now, return placeholder that will be replaced by query-opportunities.js
-    return {
-      supplyAPY: null,
-      borrowAPY: null,
-    };
+    const client = getClient(chainId);
+
+    return await withRetry(async () => {
+      // Call supplyRate() on the pool contract
+      // Returns uint256 in RAY format (1e27) representing annual rate
+      const supplyRate = await client.readContract({
+        address: poolAddress,
+        abi: [
+          {
+            name: 'supplyRate',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [],
+            outputs: [{ type: 'uint256' }],
+          },
+        ],
+        functionName: 'supplyRate',
+      });
+
+      // Convert RAY (1e27) to percentage
+      // supplyRate is already annualized, just need to convert from RAY to percentage
+      // APY = (supplyRate / 1e27) * 100
+      const supplyRateBigInt = BigInt(supplyRate);
+      const RAY = BigInt('1000000000000000000000000000'); // 1e27
+
+      // Multiply by 10000 to preserve precision, then divide by 100 for percentage
+      const supplyAPY = Number((supplyRateBigInt * BigInt(10000)) / RAY) / 100;
+
+      console.log(`   ✅ Pool ${poolAddress.slice(0, 10)}... on chain ${chainId}: ${supplyAPY.toFixed(2)}% APY`);
+
+      return {
+        supplyAPY,
+        borrowAPY: 0, // Not applicable for lending pools
+        maxLeverage: 1, // Lending pools are non-leveraged
+        tvl: 0, // TVL not available from this method
+      };
+    });
   } catch (error) {
-    console.error(`❌ Error fetching pool APY:`, error.message);
+    console.error(`❌ Error fetching pool APY for ${poolAddress} on chain ${chainId}:`, error.message);
     return {
       supplyAPY: null,
       borrowAPY: null,
+      maxLeverage: 1,
+      tvl: 0,
     };
   }
 }
