@@ -19,16 +19,16 @@ const plasmaChain = {
   },
   rpcUrls: {
     default: {
-      http: [config.blockchain.chains.plasma.rpcUrl],
+      http: [config.blockchain.chains.Plasma.rpcUrl],
     },
     public: {
-      http: [config.blockchain.chains.plasma.rpcUrl],
+      http: [config.blockchain.chains.Plasma.rpcUrl],
     },
   },
   blockExplorers: {
     default: {
       name: 'Plasma Explorer',
-      url: config.blockchain.chains.plasma.explorerUrl,
+      url: config.blockchain.chains.Plasma.explorerUrl,
     },
   },
 };
@@ -37,7 +37,7 @@ const plasmaChain = {
 const clients = {
   1: createPublicClient({
     chain: mainnet,
-    transport: http(config.blockchain.chains.ethereum.rpcUrl, {
+    transport: http(config.blockchain.chains.Mainnet.rpcUrl, {
       timeout: config.blockchain.rpc.timeoutMs,
       retryCount: config.blockchain.rpc.maxRetries,
       retryDelay: config.blockchain.rpc.retryDelayMs,
@@ -45,7 +45,7 @@ const clients = {
   }),
   9745: createPublicClient({
     chain: plasmaChain,
-    transport: http(config.blockchain.chains.plasma.rpcUrl, {
+    transport: http(config.blockchain.chains.Plasma.rpcUrl, {
       timeout: config.blockchain.rpc.timeoutMs,
       retryCount: config.blockchain.rpc.maxRetries,
       retryDelay: config.blockchain.rpc.retryDelayMs,

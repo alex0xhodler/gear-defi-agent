@@ -42,7 +42,7 @@ async function fetchRealOpportunities(params) {
   const opportunities = [];
 
   // Gearbox Protocol has pools on both Ethereum and Plasma
-  const chains = ['ethereum', 'plasma'];
+  const chains = ['Mainnet', 'Plasma'];
 
   for (const chainKey of chains) {
     const chainConfig = config.blockchain.chains[chainKey];

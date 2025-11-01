@@ -17,6 +17,9 @@ module.exports = {
     // How often to check health factors for leveraged positions
     healthFactorCheckInterval: 10 * 60 * 1000, // 10 minutes
 
+    // How often to refresh pool list from on-chain
+    poolRefreshInterval: 15 * 60 * 1000, // 15 minutes
+
     // Cache duration for APY data (reduce API calls)
     apyCacheDuration: 5 * 60 * 1000, // 5 minutes
   },
@@ -64,14 +67,14 @@ module.exports = {
   blockchain: {
     // Supported chains
     chains: {
-      ethereum: {
+      Mainnet: {
         id: 1,
         name: 'Ethereum',
         rpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
         explorerUrl: 'https://etherscan.io',
         gearboxApiUrl: 'https://api.gearbox.fi/v1',
       },
-      plasma: {
+      Plasma: {
         id: 9745,
         name: 'Plasma',
         rpcUrl: process.env.PLASMA_RPC_URL || 'https://rpc.plasma.to',
@@ -88,21 +91,12 @@ module.exports = {
     },
   },
 
-  // Known Gearbox Pools
-  // IMPORTANT: Update these with actual Gearbox V3 pool addresses
-  // Get addresses from: https://dev.gearbox.fi/docs/documentation/deployments/deployed-contracts
+  // Gearbox Pools - Dynamically loaded from on-chain
+  // This will be populated by pool-fetcher at runtime
+  // Fallback pools for Plasma (used until first refresh)
   pools: {
-    ethereum: [
-      // Uncomment and add real pool addresses here
-      // Example format:
-      // {
-      //   address: '0x...',  // Must be valid checksummed address
-      //   name: 'USDC Pool',
-      //   token: 'USDC',
-      //   decimals: 6,
-      // },
-    ],
-    plasma: [
+    Mainnet: [],
+    Plasma: [
       {
         address: '0x53e4e9b8766969c43895839cc9c673bb6bc8ac97',
         name: 'Edge UltraYield',
