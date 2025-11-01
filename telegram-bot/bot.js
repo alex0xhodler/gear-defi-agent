@@ -47,14 +47,39 @@ bot.onText(/\/start/, async (msg) => {
   try {
     const user = await db.getOrCreateUser(chatId, username);
     const mandates = await db.getUserMandates(user.id);
+    const hasWallet = !!user.wallet_address;
 
-    if (mandates.length === 0) {
-      // First-time user - offer quick setup
+    if (mandates.length === 0 && !hasWallet) {
+      // First-time user - show two clear onboarding paths
       await bot.sendMessage(
         chatId,
         `👋 *Welcome to Gearbox Sigma Agent!*\n\n` +
-        `I'm your 24/7 DeFi yield hunter. I'll watch Gearbox Protocol lending pools and alert you when yields match your criteria.\n\n` +
-        `🚀 *Quick Start:* Choose a ready-made template or create your own custom alert!`,
+        `I help you maximize your DeFi yields on Gearbox Protocol.\n\n` +
+        `*What would you like to do?*`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '👛 Track My Wallet Positions', callback_data: 'onboard_wallet' }
+              ],
+              [
+                { text: '🔔 Get Yield Opportunity Alerts', callback_data: 'onboard_alerts' }
+              ],
+              [
+                { text: 'ℹ️ Learn More', callback_data: 'show_help' }
+              ]
+            ]
+          }
+        }
+      );
+    } else if (mandates.length === 0) {
+      // Has wallet but no alerts - suggest creating alerts
+      await bot.sendMessage(
+        chatId,
+        `👋 *Welcome back!*\n\n` +
+        `Your wallet is connected, but you don't have any yield alerts yet.\n\n` +
+        `Create an alert to get notified when high-yield opportunities match your criteria!`,
         { parse_mode: 'Markdown' }
       );
 
@@ -75,22 +100,12 @@ bot.onText(/\/start/, async (msg) => {
                 { text: '🚀 Aggressive (12%+ APY)', callback_data: 'setup_default_aggressive' }
               ],
               [
-                { text: '🎨 Custom Alert', callback_data: 'menu_create' }
+                { text: '✏️ Create Custom Alert', callback_data: 'menu_create' }
               ]
             ]
           }
         }
       );
-
-      // Encourage wallet connection for first-time users
-      if (!user.wallet_address) {
-        await bot.sendMessage(
-          chatId,
-          `💡 *Pro Tip:* Connect your wallet to track your positions!\n\n` +
-          `Use /wallet to connect and I'll monitor your active positions, APY changes, and health factors.`,
-          { parse_mode: 'Markdown' }
-        );
-      }
     } else {
       // Returning user - show main menu
       await bot.sendMessage(
@@ -102,11 +117,11 @@ bot.onText(/\/start/, async (msg) => {
       );
 
       // Remind returning users without wallet to connect
-      if (!user.wallet_address) {
+      if (!hasWallet) {
         await bot.sendMessage(
           chatId,
-          `💳 *Wallet not connected*\n\n` +
-          `Connect your wallet with /wallet to enable position tracking and receive alerts for APY changes and liquidation risks.`,
+          `💡 *Pro Tip:* Connect your wallet to track your positions!\n\n` +
+          `Use /wallet or tap the button below to enable position tracking and APY change alerts.`,
           { parse_mode: 'Markdown' }
         );
       }
@@ -322,6 +337,81 @@ bot.on('callback_query', async (query) => {
       return;
     } else if (data === 'back_to_menu') {
       await showMainMenu(chatId);
+      return;
+    } else if (data === 'onboard_wallet') {
+      // Wallet tracking onboarding path
+      await bot.sendMessage(
+        chatId,
+        `👛 *Track Your Wallet Positions*\n\n` +
+        `Connect your wallet to automatically track your Gearbox lending positions.\n\n` +
+        `*You'll get alerts for:*\n` +
+        `• APY changes (increases or decreases)\n` +
+        `• Position value updates\n` +
+        `• Pool performance trends\n\n` +
+        `Send your wallet address like this:\n` +
+        `/wallet 0xYourWalletAddress`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    } else if (data === 'onboard_alerts') {
+      // Opportunity alerts onboarding path
+      await bot.sendMessage(
+        chatId,
+        `🔔 *Get Yield Opportunity Alerts*\n\n` +
+        `I'll monitor Gearbox pools 24/7 and alert you when high-yield opportunities match your criteria.\n\n` +
+        `Choose a template to get started:`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🛡️ Conservative (3%+ APY)', callback_data: 'setup_default_conservative' }
+              ],
+              [
+                { text: '⚖️ Balanced (7%+ APY)', callback_data: 'setup_default_balanced' }
+              ],
+              [
+                { text: '🚀 Aggressive (12%+ APY)', callback_data: 'setup_default_aggressive' }
+              ],
+              [
+                { text: '✏️ Create Custom Alert', callback_data: 'menu_create' }
+              ]
+            ]
+          }
+        }
+      );
+      return;
+    } else if (data === 'show_help') {
+      // Show help from onboarding
+      await bot.sendMessage(
+        chatId,
+        `🤖 *Gearbox Sigma Agent*\n\n` +
+        `I help you maximize DeFi yields on Gearbox Protocol lending pools.\n\n` +
+        `*Two Ways to Use Me:*\n\n` +
+        `1️⃣ *Position Tracking*\n` +
+        `Connect your wallet and I'll monitor your active positions, alerting you to APY changes.\n\n` +
+        `2️⃣ *Opportunity Alerts*\n` +
+        `Set your criteria (asset, min APY, risk) and I'll scan pools every 15 minutes to find matching opportunities.\n\n` +
+        `*Commands:*\n` +
+        `/wallet [address] - Connect wallet\n` +
+        `/create - Create yield alert\n` +
+        `/positions - View positions\n` +
+        `/opportunities - Check current yields\n\n` +
+        `Ready to start?`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '👛 Track Wallet', callback_data: 'onboard_wallet' }
+              ],
+              [
+                { text: '🔔 Get Alerts', callback_data: 'onboard_alerts' }
+              ]
+            ]
+          }
+        }
+      );
       return;
     } else if (data.startsWith('setup_default_')) {
       const template = data.replace('setup_default_', '');

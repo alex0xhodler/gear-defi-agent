@@ -209,21 +209,26 @@ async function getPoolAPY(poolAddress, chainId) {
     const client = getClient(chainId);
 
     return await withRetry(async () => {
-      // Call supplyRate() on the pool contract
-      // Returns uint256 in RAY format (1e27) representing annual rate
-      const supplyRate = await client.readContract({
-        address: poolAddress,
-        abi: [
-          {
-            name: 'supplyRate',
-            type: 'function',
-            stateMutability: 'view',
-            inputs: [],
-            outputs: [{ type: 'uint256' }],
-          },
-        ],
-        functionName: 'supplyRate',
-      });
+      // Fetch both APY and TVL in parallel for efficiency
+      const [supplyRate, tvlData] = await Promise.all([
+        // Call supplyRate() on the pool contract
+        // Returns uint256 in RAY format (1e27) representing annual rate
+        client.readContract({
+          address: poolAddress,
+          abi: [
+            {
+              name: 'supplyRate',
+              type: 'function',
+              stateMutability: 'view',
+              inputs: [],
+              outputs: [{ type: 'uint256' }],
+            },
+          ],
+          functionName: 'supplyRate',
+        }),
+        // Fetch TVL data
+        getPoolTVL(poolAddress, chainId).catch(() => ({ tvlFormatted: 0 })),
+      ]);
 
       // Convert RAY (1e27) to percentage
       // supplyRate is already annualized, just need to convert from RAY to percentage
@@ -234,13 +239,13 @@ async function getPoolAPY(poolAddress, chainId) {
       // Multiply by 10000 to preserve precision, then divide by 100 for percentage
       const supplyAPY = Number((supplyRateBigInt * BigInt(10000)) / RAY) / 100;
 
-      console.log(`   ✅ Pool ${poolAddress.slice(0, 10)}... on chain ${chainId}: ${supplyAPY.toFixed(2)}% APY`);
+      console.log(`   ✅ Pool ${poolAddress.slice(0, 10)}... on chain ${chainId}: ${supplyAPY.toFixed(2)}% APY, TVL: $${tvlData.tvlFormatted.toFixed(2)}`);
 
       return {
         supplyAPY,
         borrowAPY: 0, // Not applicable for lending pools
         maxLeverage: 1, // Lending pools are non-leveraged
-        tvl: 0, // TVL not available from this method
+        tvl: tvlData.tvlFormatted,
       };
     });
   } catch (error) {
@@ -287,6 +292,86 @@ async function getHealthFactor(creditAccountAddress, chainId) {
   } catch (error) {
     console.error(`❌ Error fetching health factor:`, error.message);
     return null;
+  }
+}
+
+/**
+ * Get Total Value Locked (TVL) for an ERC4626 pool
+ * @param {string} poolAddress - ERC4626 pool contract address
+ * @param {number} chainId - Chain ID (1 for Ethereum, 9745 for Plasma)
+ * @returns {Promise<Object>} TVL data { tvlRaw, tvlFormatted, underlyingToken, decimals }
+ */
+async function getPoolTVL(poolAddress, chainId) {
+  try {
+    const client = getClient(chainId);
+
+    return await withRetry(async () => {
+      // Get pool metadata first
+      const [decimals, asset, totalAssets] = await Promise.all([
+        // Get decimal precision
+        client.readContract({
+          address: poolAddress,
+          abi: [
+            {
+              name: 'decimals',
+              type: 'function',
+              stateMutability: 'view',
+              inputs: [],
+              outputs: [{ type: 'uint8' }],
+            },
+          ],
+          functionName: 'decimals',
+        }),
+        // Get underlying token address
+        client.readContract({
+          address: poolAddress,
+          abi: [
+            {
+              name: 'asset',
+              type: 'function',
+              stateMutability: 'view',
+              inputs: [],
+              outputs: [{ type: 'address' }],
+            },
+          ],
+          functionName: 'asset',
+        }),
+        // Get total assets (TVL in underlying token)
+        client.readContract({
+          address: poolAddress,
+          abi: [
+            {
+              name: 'totalAssets',
+              type: 'function',
+              stateMutability: 'view',
+              inputs: [],
+              outputs: [{ type: 'uint256' }],
+            },
+          ],
+          functionName: 'totalAssets',
+        }),
+      ]);
+
+      // Format TVL from raw BigInt to human-readable
+      const tvlFormatted = formatUnits(totalAssets, decimals);
+
+      console.log(`   ✅ Pool ${poolAddress.slice(0, 10)}... on chain ${chainId}: TVL = $${parseFloat(tvlFormatted).toFixed(2)}`);
+
+      return {
+        tvlRaw: totalAssets.toString(),        // BigInt as string
+        tvlFormatted: parseFloat(tvlFormatted),// Human-readable number
+        underlyingToken: asset,
+        decimals: decimals,
+      };
+    });
+  } catch (error) {
+    console.error(`❌ Error fetching TVL for ${poolAddress} on chain ${chainId}:`, error.message);
+    return {
+      tvlRaw: '0',
+      tvlFormatted: 0,
+      underlyingToken: null,
+      decimals: 18,
+    };
   }
 }
 
@@ -338,6 +423,7 @@ module.exports = {
   getPoolBalance,
   convertSharesToAssets,
   getPoolAPY,
+  getPoolTVL,
   getCreditAccount,
   getHealthFactor,
   getPoolInfo,
