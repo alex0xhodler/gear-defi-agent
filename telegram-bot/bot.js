@@ -213,7 +213,7 @@ bot.on('callback_query', async (query) => {
             const status = m.signed ? '✅ Active' : '⏸️ Draft';
             return (
               `${i + 1}. *${m.asset}* - Min ${m.min_apy}% APY\n` +
-              `   Risk: ${m.risk} | Leverage: ${m.max_leverage}x\n` +
+              `   Risk: ${m.risk}\n` +
               `   Status: ${status}`
             );
           })
@@ -342,7 +342,7 @@ bot.on('callback_query', async (query) => {
         `Great! You selected *${asset}*.\n\n` +
         `What's your minimum acceptable APY?\n` +
         `(e.g., send "5" for 5% APY, or "10" for 10% APY)\n\n` +
-        `_Note: Risk and leverage will be auto-configured based on your APY target_`,
+        `_Note: Risk level will be auto-configured based on your APY target_`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -558,7 +558,7 @@ bot.onText(/\/list/, async (msg) => {
         const status = m.signed ? '✅ Active' : '⏸️ Draft';
         return (
           `${i + 1}. *${m.asset}* - Min ${m.min_apy}% APY\n` +
-          `   Risk: ${m.risk} | Leverage: ${m.max_leverage}x\n` +
+          `   Risk: ${m.risk}\n` +
           `   Status: ${status}`
         );
       })

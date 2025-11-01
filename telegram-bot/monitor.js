@@ -107,11 +107,9 @@ async function checkAllMandates() {
               `🚨 *New Opportunity Alert!*\n\n` +
               `💎 *${bestMatch.strategy || bestMatch.pool_name}*\n` +
               `📈 *APY:* ${bestAPY.toFixed(2)}%\n` +
-              `⚡ *Leverage:* ${bestMatch.leverage || bestMatch.maxLeverage || 'N/A'}x\n` +
-              `🛡️ *Health Factor:* ${bestMatch.healthFactor || 'N/A'}\n` +
               `🌐 *Chain:* ${bestMatch.chain}\n` +
               `💰 *TVL:* ${bestMatch.tvl ? '$' + (bestMatch.tvl / 1e6).toFixed(2) + 'M' : 'N/A'}\n\n` +
-              `This matches your *${mandate.asset}* mandate (min ${mandate.min_apy}% APY).\n\n` +
+              `This matches your *${mandate.asset}* alert (min ${mandate.min_apy}% APY).\n\n` +
               `_Found in scan #${scanCount} at ${new Date().toLocaleTimeString()}_`,
               {
                 parse_mode: 'Markdown',
