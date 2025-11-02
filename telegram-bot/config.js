@@ -74,6 +74,27 @@ module.exports = {
         explorerUrl: 'https://etherscan.io',
         gearboxApiUrl: 'https://api.gearbox.fi/v1',
       },
+      Arbitrum: {
+        id: 42161,
+        name: 'Arbitrum',
+        rpcUrl: process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc',
+        explorerUrl: 'https://arbiscan.io',
+        gearboxApiUrl: 'https://api-arbitrum.gearbox.fi/v1',
+      },
+      Optimism: {
+        id: 10,
+        name: 'Optimism',
+        rpcUrl: process.env.OPTIMISM_RPC_URL || 'https://mainnet.optimism.io',
+        explorerUrl: 'https://optimistic.etherscan.io',
+        gearboxApiUrl: 'https://api-optimism.gearbox.fi/v1',
+      },
+      Sonic: {
+        id: 146,
+        name: 'Sonic',
+        rpcUrl: process.env.SONIC_RPC_URL || 'https://rpc.soniclabs.com',
+        explorerUrl: 'https://sonicscan.org',
+        gearboxApiUrl: 'https://api-sonic.gearbox.fi/v1',
+      },
       Plasma: {
         id: 9745,
         name: 'Plasma',
@@ -166,6 +187,18 @@ module.exports = {
     logDir: './logs',
   },
 
+  // Pool Discovery Configuration
+  poolDiscovery: {
+    // Minimum TVL to include pool in results
+    minTVL: 1_000_000, // $1M minimum
+
+    // How often to scan for new pools
+    scanInterval: 15 * 60 * 1000, // 15 minutes
+
+    // Notification cooldown (prevent duplicate notifications)
+    notificationCooldown: 24 * 60 * 60 * 1000, // 24 hours
+  },
+
   // Feature Flags
   features: {
     // Enable position monitoring
@@ -182,6 +215,9 @@ module.exports = {
 
     // Enable mandate monitoring (existing feature)
     mandateMonitoring: true,
+
+    // Enable pool discovery monitoring (NEW)
+    poolDiscoveryMonitoring: true,
   },
 
   // Development/Debug Settings

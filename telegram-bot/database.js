@@ -729,6 +729,193 @@ class Database {
   }
 
   // ==========================================
+  // POOL CACHE OPERATIONS
+  // ==========================================
+
+  /**
+   * Get all cached pools
+   * @param {boolean} activeOnly - Only return active pools
+   * @returns {Promise<Array>} Array of pool objects
+   */
+  getCachedPools(activeOnly = true) {
+    return new Promise((resolve, reject) => {
+      const query = activeOnly
+        ? `SELECT * FROM pool_cache WHERE active = 1 ORDER BY discovered_at DESC`
+        : `SELECT * FROM pool_cache ORDER BY discovered_at DESC`;
+
+      this.db.all(query, (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows);
+      });
+    });
+  }
+
+  /**
+   * Get cached pools for a specific chain
+   */
+  getCachedPoolsByChain(chainId) {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT * FROM pool_cache WHERE chain_id = ? AND active = 1`,
+        [chainId],
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
+        }
+      );
+    });
+  }
+
+  /**
+   * Add or update a pool in the cache
+   * @param {Object} poolData - Pool information
+   * @returns {Promise<Object>} Result with isNew flag
+   */
+  addOrUpdatePoolCache(poolData) {
+    return new Promise((resolve, reject) => {
+      const {
+        pool_address,
+        chain_id,
+        pool_name,
+        pool_symbol,
+        underlying_token,
+        tvl,
+        apy
+      } = poolData;
+
+      // Check if pool exists
+      this.db.get(
+        `SELECT id, discovered_at FROM pool_cache WHERE pool_address = ? AND chain_id = ?`,
+        [pool_address, chain_id],
+        (err, existingPool) => {
+          if (err) return reject(err);
+
+          if (existingPool) {
+            // Update existing pool
+            this.db.run(
+              `UPDATE pool_cache
+               SET pool_name = ?, pool_symbol = ?, underlying_token = ?,
+                   last_tvl = tvl, last_apy = apy,
+                   tvl = ?, apy = ?, last_seen = CURRENT_TIMESTAMP, active = 1
+               WHERE pool_address = ? AND chain_id = ?`,
+              [pool_name, pool_symbol, underlying_token, tvl, apy, pool_address, chain_id],
+              (err) => {
+                if (err) return reject(err);
+                resolve({
+                  id: existingPool.id,
+                  isNew: false,
+                  discovered_at: existingPool.discovered_at
+                });
+              }
+            );
+          } else {
+            // Insert new pool
+            this.db.run(
+              `INSERT INTO pool_cache
+               (pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, last_tvl, last_apy)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, tvl, apy],
+              function(err) {
+                if (err) return reject(err);
+                resolve({
+                  id: this.lastID,
+                  isNew: true,
+                  discovered_at: new Date().toISOString()
+                });
+              }
+            );
+          }
+        }
+      );
+    });
+  }
+
+  /**
+   * Mark pools as inactive if not seen in latest scan
+   * @param {Array<String>} seenPoolKeys - Array of "address-chainId" keys
+   */
+  markMissingPoolsInactive(seenPoolKeys) {
+    return new Promise((resolve, reject) => {
+      if (seenPoolKeys.length === 0) {
+        resolve();
+        return;
+      }
+
+      // Build condition to match all seen pools
+      const conditions = seenPoolKeys.map(() => `(pool_address || '-' || chain_id) = ?`).join(' OR ');
+
+      this.db.run(
+        `UPDATE pool_cache
+         SET active = 0
+         WHERE active = 1 AND NOT (${conditions})`,
+        seenPoolKeys,
+        function(err) {
+          if (err) return reject(err);
+          resolve({ deactivated: this.changes });
+        }
+      );
+    });
+  }
+
+  /**
+   * Get newly discovered pools (within last N hours)
+   * @param {number} hours - Time window in hours
+   */
+  getNewPools(hours = 24) {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT * FROM pool_cache
+         WHERE active = 1
+           AND datetime(discovered_at) > datetime('now', '-${hours} hours')
+         ORDER BY discovered_at DESC`,
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
+        }
+      );
+    });
+  }
+
+  /**
+   * Check if user was notified about a specific pool
+   * @param {number} userId - User ID
+   * @param {string} poolAddress - Pool address
+   * @param {number} chainId - Chain ID
+   * @param {number} hours - Cooldown in hours
+   */
+  wasNotifiedAboutPool(userId, poolAddress, chainId, hours = 24) {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        `SELECT id FROM pool_notifications
+         WHERE user_id = ? AND pool_address = ? AND chain_id = ?
+           AND datetime(sent_at) > datetime('now', '-${hours} hours')`,
+        [userId, poolAddress, chainId],
+        (err, row) => {
+          if (err) return reject(err);
+          resolve(!!row);
+        }
+      );
+    });
+  }
+
+  /**
+   * Log a pool notification
+   */
+  logPoolNotification(userId, poolAddress, chainId, mandateId = null) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        `INSERT INTO pool_notifications (user_id, pool_address, chain_id, mandate_id)
+         VALUES (?, ?, ?, ?)`,
+        [userId, poolAddress, chainId, mandateId],
+        function(err) {
+          if (err) return reject(err);
+          resolve({ id: this.lastID });
+        }
+      );
+    });
+  }
+
+  // ==========================================
   // UTILITY
   // ==========================================
 
