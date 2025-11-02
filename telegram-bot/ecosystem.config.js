@@ -13,7 +13,7 @@ module.exports = {
     {
       name: 'gearbox-telegram-bot',
       script: './index.js',
-      cwd: '/home/ubuntu/gear-defi-agent/telegram-bot', // Update to your deployment path
+      cwd: process.env.APP_PATH || require('path').resolve(__dirname), // Use env var or current directory
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -45,7 +45,7 @@ module.exports = {
     {
       name: 'gearbox-position-monitor',
       script: './position-monitor.js',
-      cwd: '/home/ubuntu/gear-defi-agent/telegram-bot',
+      cwd: process.env.APP_PATH || require('path').resolve(__dirname), // Use env var or current directory
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -77,12 +77,12 @@ module.exports = {
 
   deploy: {
     production: {
-      // SSH deployment config (optional)
-      user: 'ubuntu',
-      host: 'your-aws-instance.compute.amazonaws.com',
+      // SSH deployment config (optional) - Configure via environment variables
+      user: process.env.DEPLOY_USER || 'ubuntu',
+      host: process.env.DEPLOY_HOST || 'your-server.com',
       ref: 'origin/main',
-      repo: 'git@github.com:yourusername/gearagent.git',
-      path: '/home/ubuntu/gearagent',
+      repo: process.env.DEPLOY_REPO || 'git@github.com:yourusername/gearagent.git',
+      path: process.env.DEPLOY_PATH || '/home/ubuntu/gearagent',
       'post-deploy': 'cd telegram-bot && npm install && pm2 reload ecosystem.config.js --env production',
       'pre-deploy-local': 'echo "Deploying to production server..."'
     }
