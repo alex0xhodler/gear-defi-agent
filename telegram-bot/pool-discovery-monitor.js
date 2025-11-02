@@ -181,14 +181,15 @@ async function notifyUsersAboutNewPools(bot, newPools) {
           continue;
         }
 
-        // Get user's Telegram chat ID
-        const user = await database.getUser(mandate.user_id);
-        if (!user || !user.telegram_chat_id) {
+        // Mandates from getActiveMandates() already include telegram_chat_id via JOIN
+        // If not available, skip this notification
+        if (!mandate.telegram_chat_id) {
+          console.log(`   ⚠️  Skipping notification: No telegram_chat_id for user ${mandate.user_id}`);
           continue;
         }
 
         // Send notification
-        await sendNewPoolNotification(bot, user.telegram_chat_id, pool, mandate);
+        await sendNewPoolNotification(bot, mandate.telegram_chat_id, pool, mandate);
 
         // Log notification
         await database.logPoolNotification(
@@ -199,7 +200,7 @@ async function notifyUsersAboutNewPools(bot, newPools) {
         );
 
         notificationsSent++;
-        console.log(`   ✅ Notified user ${user.telegram_chat_id} about ${pool.name}`);
+        console.log(`   ✅ Notified user ${mandate.telegram_chat_id} about ${pool.name}`);
 
         // Add small delay to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 100));

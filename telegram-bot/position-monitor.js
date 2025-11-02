@@ -28,19 +28,18 @@ async function startMonitoring() {
   console.log('🔍 Starting position monitoring service...');
 
   // Check if any pools are configured
-  const totalPools = config.pools.ethereum.length + config.pools.plasma.length;
+  const totalPools = (config.pools?.Mainnet?.length || 0) + (config.pools?.Plasma?.length || 0);
   if (totalPools === 0) {
     console.log('⚠️  No pools configured in config.js');
-    console.log('📖 Please add Gearbox pool addresses to config.pools');
-    console.log('   Get addresses from: https://dev.gearbox.fi/docs/documentation/deployments/deployed-contracts');
+    console.log('📖 Pools will be dynamically discovered via pool-fetcher');
     console.log('');
-    console.log('ℹ️  Position monitoring will not scan for positions until pools are configured.');
-    console.log('   The service will still monitor existing positions in the database.');
+    console.log('ℹ️  Position monitoring will scan positions for users with connected wallets.');
+    console.log('   The service will monitor existing positions in the database.');
     console.log('');
   }
 
   console.log(`📊 Configuration:`);
-  console.log(`   - Configured pools: ${totalPools} (${config.pools.ethereum.length} Ethereum, ${config.pools.plasma.length} Plasma)`);
+  console.log(`   - Configured pools: ${totalPools} (${config.pools?.Mainnet?.length || 0} Mainnet, ${config.pools?.Plasma?.length || 0} Plasma)`);
   console.log(`   - Position scan interval: ${config.monitoring.positionScanInterval / 60000} minutes`);
   console.log(`   - APY check interval: ${config.monitoring.positionScanInterval / 60000} minutes`);
   console.log(`   - Minor APY change threshold: ${config.apy.minorChangeThreshold}%`);
@@ -85,12 +84,10 @@ async function scanUserPositions() {
   console.log('\n🔍 Scanning user positions...');
   lastPositionScan = new Date();
 
-  // Skip if no pools configured
-  const totalPools = config.pools.ethereum.length + config.pools.plasma.length;
+  // Note: Pools are dynamically discovered, position scanning works with any discovered pools
+  const totalPools = (config.pools?.Mainnet?.length || 0) + (config.pools?.Plasma?.length || 0);
   if (totalPools === 0) {
-    console.log('   ⏭️  Skipped: No pools configured in config.js');
-    console.log('   💡 Add Gearbox pool addresses to enable position scanning');
-    return;
+    console.log('   ℹ️  No static pools configured (using dynamic discovery)');
   }
 
   try {
