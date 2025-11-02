@@ -6,7 +6,7 @@
  * - Position closures
  */
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const TelegramBot = require('node-telegram-bot-api');
 const db = require('./database');
 const config = require('./config');

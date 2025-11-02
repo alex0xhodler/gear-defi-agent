@@ -2,11 +2,11 @@
  * PM2 Ecosystem Configuration for Gearbox Telegram Bot
  * Deploy with: pm2 start ecosystem.config.js
  *
- * IMPORTANT: Create a .env file with your bot token before starting!
+ * IMPORTANT: Create a .env file in the root directory with your bot token before starting!
  * See .env.example for required environment variables.
  */
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
 module.exports = {
   apps: [
