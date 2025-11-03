@@ -40,47 +40,80 @@ async function queryFarmOpportunities(params) {
  */
 async function fetchRealOpportunities(params) {
   const opportunities = [];
+  const db = require('./database');
 
-  // Gearbox Protocol has pools on both Ethereum and Plasma
-  const chains = ['Mainnet', 'Plasma'];
+  // Get all discovered pools from database cache
+  let allPools = [];
+  try {
+    allPools = await db.getCachedPools(true); // active only
+    console.log(`   📊 Loaded ${allPools.length} pools from database cache`);
+  } catch (error) {
+    console.error(`   ❌ Error loading pools from cache:`, error.message);
+    // Fallback to static config
+    const staticPools = [];
+    for (const [chainKey, pools] of Object.entries(config.pools)) {
+      const chainConfig = config.blockchain.chains[chainKey];
+      if (chainConfig && pools) {
+        pools.forEach(pool => {
+          staticPools.push({
+            pool_address: pool.address,
+            pool_name: pool.name,
+            underlying_token: pool.token,
+            chain_id: chainConfig.id
+          });
+        });
+      }
+    }
+    allPools = staticPools;
+    console.log(`   📊 Using ${allPools.length} pools from static config`);
+  }
 
-  for (const chainKey of chains) {
-    const chainConfig = config.blockchain.chains[chainKey];
-    const pools = config.pools[chainKey];
+  // Filter pools by asset
+  const relevantPools = allPools.filter(pool => {
+    const poolToken = pool.underlying_token || '';
+    return poolToken.toUpperCase() === params.asset.toUpperCase();
+  });
 
-    // Filter pools by asset
-    const relevantPools = pools.filter(pool =>
-      pool.token.toUpperCase() === params.asset.toUpperCase()
-    );
+  console.log(`   ✅ Found ${relevantPools.length} relevant pools for ${params.asset}`);
 
-    for (const pool of relevantPools) {
-      try {
-        // Fetch APY data for this pool
-        const apyData = await fetchPoolAPY(pool.address, chainConfig.id);
+  for (const pool of relevantPools) {
+    try {
+      // Get chain config for this pool
+      const chainConfig = Object.values(config.blockchain.chains).find(
+        chain => chain.id === pool.chain_id
+      );
 
-        if (!apyData || apyData.supplyAPY === null) {
-          console.log(`   ⚠️ No APY data for ${pool.name} on ${chainConfig.name}`);
-          continue;
-        }
+      if (!chainConfig) {
+        console.log(`   ⚠️ No chain config for chain ID ${pool.chain_id}`);
+        continue;
+      }
 
-        // Create opportunity object
-        const opportunity = {
-          id: `${pool.token.toLowerCase()}_${chainKey}_${pool.address.slice(2, 8)}`,
-          pool_address: pool.address,
-          pool_name: pool.name,
-          strategy: `${pool.name} on ${chainConfig.name}`,
-          chain: chainConfig.name,
-          chain_id: chainConfig.id,
-          projAPY: apyData.supplyAPY,
-          apy: apyData.supplyAPY,
-          leverage: 1, // Non-leveraged by default
-          maxLeverage: apyData.maxLeverage || 1,
-          healthFactor: null, // Not applicable for non-leveraged
-          tvl: apyData.tvl || 0,
-          risk: determineRiskLevel(apyData.supplyAPY, 1),
-          underlying_token: pool.token,
-          decimals: pool.decimals,
-        };
+      // Fetch APY data for this pool
+      const apyData = await fetchPoolAPY(pool.pool_address, pool.chain_id);
+
+      if (!apyData || apyData.supplyAPY === null) {
+        console.log(`   ⚠️ No APY data for ${pool.pool_name} on ${chainConfig.name}`);
+        continue;
+      }
+
+      // Create opportunity object
+      const opportunity = {
+        id: `${pool.underlying_token.toLowerCase()}_${pool.chain_id}_${pool.pool_address.slice(2, 8)}`,
+        pool_address: pool.pool_address,
+        pool_name: pool.pool_name,
+        strategy: `${pool.pool_name} on ${chainConfig.name}`,
+        chain: chainConfig.name,
+        chain_id: pool.chain_id,
+        projAPY: apyData.supplyAPY,
+        apy: apyData.supplyAPY,
+        leverage: 1, // Non-leveraged by default
+        maxLeverage: apyData.maxLeverage || 1,
+        healthFactor: null, // Not applicable for non-leveraged
+        tvl: apyData.tvl || 0,
+        risk: determineRiskLevel(apyData.supplyAPY, 1),
+        underlying_token: pool.underlying_token,
+        decimals: 18, // Default
+      };
 
         // Apply filters
         if (params.min_apy && opportunity.apy < params.min_apy) {
@@ -98,10 +131,9 @@ async function fetchRealOpportunities(params) {
           }
         }
 
-        opportunities.push(opportunity);
-      } catch (error) {
-        console.error(`   ❌ Error processing pool ${pool.name}:`, error.message);
-      }
+      opportunities.push(opportunity);
+    } catch (error) {
+      console.error(`   ❌ Error processing pool ${pool.pool_name}:`, error.message);
     }
   }
 
@@ -125,10 +157,18 @@ async function fetchPoolAPY(poolAddress, chainId) {
   }
 
   try {
-    // Determine API URL based on chain
+    // Determine API URL based on chain ID
     const chainConfig = chainId === 1
-      ? config.blockchain.chains.ethereum
-      : config.blockchain.chains.plasma;
+      ? config.blockchain.chains.Mainnet
+      : chainId === 9745
+      ? config.blockchain.chains.Plasma
+      : chainId === 42161
+      ? config.blockchain.chains.Arbitrum
+      : chainId === 10
+      ? config.blockchain.chains.Optimism
+      : chainId === 146
+      ? config.blockchain.chains.Sonic
+      : config.blockchain.chains.Mainnet; // Default to Mainnet
 
     // Fetch from Gearbox API
     const response = await fetch(`${chainConfig.gearboxApiUrl}/pools/${poolAddress}`, {
