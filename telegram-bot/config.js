@@ -190,7 +190,7 @@ module.exports = {
   // Pool Discovery Configuration
   poolDiscovery: {
     // Minimum TVL to include pool in results
-    minTVL: 1_000_000, // $1M minimum
+    minTVL: 0, // No minimum - notify on all pools
 
     // How often to scan for new pools
     scanInterval: 15 * 60 * 1000, // 15 minutes
