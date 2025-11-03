@@ -1,18 +1,46 @@
 /**
  * Position Scanner for Gearbox Pools
  * Detects user positions across Ethereum mainnet and Plasma chain
- * Now with real blockchain integration using viem
+ * Now with real blockchain integration using viem and dynamic pool discovery
  */
 
 const { fetchPoolAPY } = require('./query-opportunities');
 const blockchain = require('./utils/blockchain');
 const config = require('./config');
+const database = require('./database');
 
-// Use known pools from config
-const KNOWN_POOLS = {
-  1: config.pools.ethereum,
-  9745: config.pools.plasma,
-};
+/**
+ * Get all pools to scan (from database cache + static config)
+ */
+async function getPoolsToScan() {
+  const poolsByChain = {};
+
+  try {
+    // Get pools from database cache (discovered by pool-fetcher)
+    const cachedPools = await database.getCachedPools(true); // active only
+
+    for (const pool of cachedPools) {
+      if (!poolsByChain[pool.chain_id]) {
+        poolsByChain[pool.chain_id] = [];
+      }
+      poolsByChain[pool.chain_id].push({
+        address: pool.pool_address,
+        name: pool.pool_name,
+        token: pool.underlying_token,
+        decimals: 18, // Default, will be fetched on-chain if needed
+      });
+    }
+  } catch (error) {
+    console.log(`   ⚠️  Could not load pools from cache: ${error.message}`);
+  }
+
+  // Fallback: Add static Plasma pools if not in cache
+  if (!poolsByChain[9745] || poolsByChain[9745].length === 0) {
+    poolsByChain[9745] = config.pools.Plasma || [];
+  }
+
+  return poolsByChain;
+}
 
 /**
  * Scan user wallet for Gearbox pool positions
@@ -24,8 +52,11 @@ async function scanWalletPositions(walletAddress) {
 
   const positions = [];
 
+  // Get all discovered pools from database + static config
+  const poolsByChain = await getPoolsToScan();
+
   // Scan each chain
-  for (const [chainId, pools] of Object.entries(KNOWN_POOLS)) {
+  for (const [chainId, pools] of Object.entries(poolsByChain)) {
     const chainIdNum = parseInt(chainId);
     console.log(`   Checking ${pools.length} pools on chain ${chainId}...`);
 
@@ -90,5 +121,5 @@ async function scanWalletPositions(walletAddress) {
 
 module.exports = {
   scanWalletPositions,
-  KNOWN_POOLS,
+  getPoolsToScan,
 };
