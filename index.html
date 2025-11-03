@@ -475,7 +475,7 @@
                             })}
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {m.text}
                             {m.successLink && (
                               <a
@@ -489,6 +489,22 @@
                                 </svg>
                               </a>
                             )}
+                            {m.successLinks && m.successLinks.map((link, idx) => (
+                              <React.Fragment key={idx}>
+                                {idx > 0 && <span>or via</span>}
+                                <a
+                                  href={link.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-brand-pink font-bold hover:underline inline-flex items-center"
+                                >
+                                  {link.text}
+                                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                </a>
+                              </React.Fragment>
+                            ))}
                             {m.retryAction && (
                               <div className="mt-3">
                                 <button
@@ -1527,10 +1543,16 @@
 
               // Add success message to chat with clickable dashboard link
               pushChatMessage('agent', 'You\'re in! 🎉 Your position is now earning. Track your yields on the', {
-                successLink: {
-                  url: 'https://app.gearbox.fi/dashboard',
-                  text: 'Gearbox Dashboard →'
-                }
+                successLinks: [
+                  {
+                    url: 'https://app.gearbox.fi/dashboard',
+                    text: 'Gearbox Dashboard →'
+                  },
+                  {
+                    url: 'https://t.me/sigma_gear_bot',
+                    text: 'Sigmatic Bot on Telegram'
+                  }
+                ]
               });
 
               setTimeout(()=> setActiveTx(null), 2000);

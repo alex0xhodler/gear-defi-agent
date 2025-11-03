@@ -1,5 +1,8 @@
 // Web3 configuration using Ethers.js (simpler, better CDN support)
 // This file is loaded via script tag in index.html
+//
+// SECURITY: RPC URLs should be configured via environment variables or injected at build time
+// For demo/development, fallback to public RPCs is provided
 
 window.initWeb3 = function() {
   // Check if ethers is loaded
@@ -8,13 +11,19 @@ window.initWeb3 = function() {
     throw new Error('Ethers.js library not loaded');
   }
 
+  // Get RPC URLs from window config (set by server/build process) or use public RPCs as fallback
+  const ETHEREUM_RPC = window.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com'; // Public RPC fallback
+  const ARBITRUM_RPC = window.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc';
+  const BASE_RPC = window.BASE_RPC_URL || 'https://mainnet.base.org';
+  const PLASMA_RPC = window.PLASMA_RPC_URL || 'https://rpc.plasma.to';
+
   // Simple config object with chain info
   const config = {
     chains: {
-      1: { name: 'Ethereum', rpc: 'https://eth-mainnet.g.alchemy.com/v2/vdLXgsGx-MhUsfGMCNgEj39i1EUWrTz6' },
-      42161: { name: 'Arbitrum', rpc: 'https://arb1.arbitrum.io/rpc' },
-      8453: { name: 'Base', rpc: 'https://mainnet.base.org' },
-      146: { name: 'Plasma', rpc: 'https://rpc.plasma.to' },
+      1: { name: 'Ethereum', rpc: ETHEREUM_RPC },
+      42161: { name: 'Arbitrum', rpc: ARBITRUM_RPC },
+      8453: { name: 'Base', rpc: BASE_RPC },
+      146: { name: 'Plasma', rpc: PLASMA_RPC },
     },
     currentChainId: null,
   };
@@ -85,9 +94,12 @@ window.fetchTokenBalance = async function(tokenSymbol, userAddress) {
     // Use viem for reading contract data
     const { createPublicClient, http, formatUnits } = window.viem;
 
+    // Use configured RPC URL (same as initWeb3)
+    const ETHEREUM_RPC = window.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com';
+
     // Create public client
     const client = createPublicClient({
-      transport: http('https://eth-mainnet.g.alchemy.com/v2/vdLXgsGx-MhUsfGMCNgEj39i1EUWrTz6')
+      transport: http(ETHEREUM_RPC)
     });
 
     // Read balance and decimals
