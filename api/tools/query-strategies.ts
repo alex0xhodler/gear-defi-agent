@@ -283,8 +283,15 @@ export async function queryFarmOpportunities(params: {
 
   } catch (error) {
     console.error('❌ Error querying Gearbox SDK:', error);
+    console.error('Query params:', params);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
 
-    // Return empty array instead of fallback
+    // Check if it's an RPC error
+    if (error instanceof Error && error.message.includes('RPC')) {
+      console.error('⚠️ RPC connection issue detected. Check ETHEREUM_RPC_URL configuration.');
+    }
+
+    // Return empty array instead of throwing (graceful degradation)
     return [];
   }
 }

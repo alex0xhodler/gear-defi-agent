@@ -20,9 +20,18 @@ export async function getGearboxSDK(chainId?: number): Promise<GearboxSDK> {
       return await createPlasmaSDK();
     }
 
+    // Get RPC URL from environment with fallback to public RPC
+    const rpcURL = process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com';
+
+    if (!process.env.ETHEREUM_RPC_URL) {
+      console.warn('⚠️ ETHEREUM_RPC_URL not set, using public RPC (may have rate limits)');
+    }
+
+    console.log('🔗 Initializing Gearbox SDK with RPC:', rpcURL.includes('alchemy') ? 'Alchemy' : 'Public RPC');
+
     // Default: Ethereum mainnet SDK
     sdkInstance = await GearboxSDK.attach({
-      rpcURLs: [process.env.ETHEREUM_RPC_URL!],
+      rpcURLs: [rpcURL],
       timeout: 120_000, // 2 minutes
       ignoreUpdateablePrices: true, // Skip RedStone price feed updates
     });
@@ -35,7 +44,12 @@ export async function getGearboxSDK(chainId?: number): Promise<GearboxSDK> {
     return sdkInstance;
   } catch (error) {
     console.error('❌ Failed to initialize Gearbox SDK:', error);
-    throw error;
+
+    // Log additional diagnostic info
+    console.error('RPC URL configured:', process.env.ETHEREUM_RPC_URL ? 'Yes' : 'No (using fallback)');
+    console.error('Chain ID requested:', chainId || 'mainnet');
+
+    throw new Error(`Gearbox SDK initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
