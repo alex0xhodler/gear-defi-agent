@@ -49,3 +49,6 @@ DEPLOY_*.md
 *_FIX_COMPLETE.md
 check-*.js
 debug-*.js
+gearagent.db
+gearbox_bot.db
+*.db
