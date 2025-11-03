@@ -66,9 +66,21 @@ export async function queryFarmOpportunities(params: {
       // Check if pool underlying matches (e.g., USDC pool, WETH pool)
       const poolToken = sdk.tokensMeta.get(market.pool.pool.underlying);
       const poolSymbol = poolToken?.symbol || '';
+      const searchAsset = params.asset.toUpperCase();
+      const symbol = poolSymbol.toUpperCase();
 
-      // Match the pool's underlying token to the requested asset
-      return poolSymbol.toUpperCase().includes(params.asset.toUpperCase());
+      // Special case: When searching for "ETH", match ALL ETH variants
+      if (searchAsset === 'ETH' || searchAsset === 'WETH') {
+        return symbol.includes('ETH'); // Matches WETH, wstETH, cbETH, rETH, etc.
+      }
+
+      // For stablecoins, match exact or partial
+      if (searchAsset === 'USDC' || searchAsset === 'USDT' || searchAsset === 'DAI') {
+        return symbol.includes(searchAsset);
+      }
+
+      // Default: exact match or includes
+      return symbol.includes(searchAsset);
     });
 
     console.log(`✅ Found ${relevantMarkets.length} relevant markets for ${params.asset}`);
@@ -88,20 +100,44 @@ export async function queryFarmOpportunities(params: {
       // Calculate TVL (convert from wei to USD)
       const tvl = Number(market.pool.pool.expectedLiquidity) / Math.pow(10, poolDecimals);
 
-      // Map pool addresses to friendly names (for Plasma pools)
+      // Map pool addresses to beautiful friendly names
       const poolNameMap: Record<string, string> = {
+        // Plasma pools
         '0x76309a9a56309104518847bba321c261b7b4a43f': 'Invariant Group',
         '0x53e4e9b8766969c43895839cc9c673bb6bc8ac97': 'Edge UltraYield',
         '0xb74760fd26400030620027dd29d19d74d514700e': 'Hyperithm',
+
+        // Mainnet ETH pools (based on screenshot APYs)
+        // Note: Add actual addresses when discovered from SDK
+        // These are placeholders - SDK will provide real addresses
       };
 
-      // Create friendly pool name
-      // For Plasma: Use custom pool names (e.g., "Invariant Group", "Edge UltraYield")
-      // For mainnet: Use "TOKEN V3" (e.g., "GHO V3", "USDC V3")
+      // Create beautiful pool names based on token type
       const poolAddress = market.pool.pool.address.toLowerCase();
-      const friendlyTitle = poolNameMap[poolAddress]
-        ? `${underlyingSymbol} ${poolNameMap[poolAddress]}`
-        : `${underlyingSymbol} V3`;
+
+      let friendlyTitle: string;
+      if (poolNameMap[poolAddress]) {
+        // Use custom name from map
+        friendlyTitle = `${underlyingSymbol} ${poolNameMap[poolAddress]}`;
+      } else if (underlyingSymbol.includes('wstETH')) {
+        // Lido wrapped staked ETH
+        friendlyTitle = 'Lido wstETH';
+      } else if (underlyingSymbol.includes('cbETH')) {
+        // Coinbase wrapped ETH
+        friendlyTitle = 'Coinbase cbETH';
+      } else if (underlyingSymbol.includes('rETH')) {
+        // Rocket Pool ETH
+        friendlyTitle = 'Rocket Pool rETH';
+      } else if (underlyingSymbol === 'WETH') {
+        // Plain wrapped ETH
+        friendlyTitle = 'ETH+';
+      } else if (underlyingSymbol.includes('ETH')) {
+        // Other ETH variants (weETH, etc.)
+        friendlyTitle = `Ether.fi ${underlyingSymbol}`;
+      } else {
+        // Default for other tokens (USDC, GHO, etc.)
+        friendlyTitle = underlyingSymbol;
+      }
 
       // 1. ALWAYS create passive lending opportunity
       opportunities.push({
@@ -247,8 +283,15 @@ export async function queryFarmOpportunities(params: {
 
   } catch (error) {
     console.error('❌ Error querying Gearbox SDK:', error);
+    console.error('Query params:', params);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
 
-    // Return empty array instead of fallback
+    // Check if it's an RPC error
+    if (error instanceof Error && error.message.includes('RPC')) {
+      console.error('⚠️ RPC connection issue detected. Check ETHEREUM_RPC_URL configuration.');
+    }
+
+    // Return empty array instead of throwing (graceful degradation)
     return [];
   }
 }
