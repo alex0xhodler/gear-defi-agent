@@ -115,21 +115,21 @@ async function fetchRealOpportunities(params) {
         decimals: 18, // Default
       };
 
-        // Apply filters
-        if (params.min_apy && opportunity.apy < params.min_apy) {
+      // Apply filters
+      if (params.min_apy && opportunity.apy < params.min_apy) {
+        continue;
+      }
+
+      if (params.max_leverage && opportunity.leverage > params.max_leverage) {
+        continue;
+      }
+
+      if (params.risk_tolerance) {
+        const targetRisk = capitalizeFirstLetter(params.risk_tolerance.toLowerCase());
+        if (opportunity.risk !== targetRisk) {
           continue;
         }
-
-        if (params.max_leverage && opportunity.leverage > params.max_leverage) {
-          continue;
-        }
-
-        if (params.risk_tolerance) {
-          const targetRisk = capitalizeFirstLetter(params.risk_tolerance.toLowerCase());
-          if (opportunity.risk !== targetRisk) {
-            continue;
-          }
-        }
+      }
 
       opportunities.push(opportunity);
     } catch (error) {
