@@ -447,12 +447,16 @@ async function getPlasmaPoolDetails(poolAddress, chainId, chainKey, poolName) {
 
 /**
  * Fetch all pools from all deployed Gearbox chains
- * @param {number} minTVL - Minimum TVL in USD (default $1M)
+ * @param {number} minTVL - Minimum TVL in USD (default 0 = no filter)
  * @returns {Promise<Object>} { pools, newPools, removedPools, chainCount }
  */
-async function fetchAllPools(minTVL = 1_000_000) {
+async function fetchAllPools(minTVL = 0) {
   console.log('🔍 Fetching pools from all Gearbox chains via SDK...');
-  console.log(`   Filter: TVL >= $${(minTVL / 1e6).toFixed(1)}M\n`);
+  if (minTVL > 0) {
+    console.log(`   Filter: TVL >= $${(minTVL / 1e6).toFixed(1)}M\n`);
+  } else {
+    console.log(`   Filter: None (all pools)\n`);
+  }
 
   const allPools = [];
   let chainsScanned = 0;
@@ -479,15 +483,10 @@ async function fetchAllPools(minTVL = 1_000_000) {
 
     chainsScanned++;
 
-    // Filter by minimum TVL and add to results
+    // Add all pools (no TVL filter)
     for (const pool of pools) {
       console.log(`     💎 ${pool.name}: $${pool.tvl.toFixed(2)} TVL, ${pool.apy.toFixed(2)}% APY`);
-
-      if (pool.tvl >= minTVL) {
-        allPools.push(pool);
-      } else {
-        console.log(`        ⏭️  Skipped (TVL < $${(minTVL / 1e6).toFixed(1)}M)`);
-      }
+      allPools.push(pool);
     }
 
     console.log();
@@ -503,12 +502,7 @@ async function fetchAllPools(minTVL = 1_000_000) {
 
       if (details) {
         console.log(`     💎 ${details.name}: $${details.tvl.toFixed(2)} TVL, ${details.apy.toFixed(2)}% APY`);
-
-        if (details.tvl >= minTVL) {
-          allPools.push(details);
-        } else {
-          console.log(`        ⏭️  Skipped (TVL < $${(minTVL / 1e6).toFixed(1)}M)`);
-        }
+        allPools.push(details);
       }
     }
     chainsScanned++;

@@ -31,7 +31,7 @@ function startPoolDiscoveryMonitor(bot) {
 
   console.log('🔍 Starting pool discovery monitor...');
   console.log(`   Scan interval: ${config.monitoring.poolRefreshInterval / 1000 / 60} minutes`);
-  console.log(`   Min TVL: $${config.poolDiscovery?.minTVL || 1_000_000}\n`);
+  console.log(`   Min TVL: $${config.poolDiscovery?.minTVL ?? 0} (no filter)\n`);
 
   isRunning = true;
 
@@ -75,8 +75,8 @@ async function scanPools(bot) {
     console.log(`   Time: ${new Date().toLocaleString()}`);
     console.log(`${'='.repeat(60)}\n`);
 
-    // Fetch all pools from chains
-    const minTVL = config.poolDiscovery?.minTVL || 1_000_000;
+    // Fetch all pools from chains (no TVL filter)
+    const minTVL = config.poolDiscovery?.minTVL ?? 0;
     const result = await poolFetcher.fetchAllPools(minTVL);
 
     console.log(`✅ Discovered ${result.pools.length} pools across ${result.chainCount} chains\n`);
