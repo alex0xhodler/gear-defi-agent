@@ -507,12 +507,16 @@ bot.on('callback_query', async (query) => {
         return;
       }
 
+      // Look up pool details to get chain ID
+      const pool = await db.getCachedPoolByAddress(poolAddress);
+      const chainId = pool?.chain_id || 1; // Default to Ethereum if not found
+
       await bot.sendMessage(
         chatId,
         `🔐 *Transaction Prepared*\n\n` +
         `Pool: \`${poolAddress}\`\n` +
         `Wallet: \`${user.wallet_address}\`\n\n` +
-        `To proceed, visit:\nhttps://app.gearbox.fi/pools/${poolAddress}\n\n` +
+        `To proceed, visit:\nhttps://app.gearbox.finance/pools/${chainId}/${poolAddress}\n\n` +
         `_Future: Direct wallet signing from Telegram_`,
         { parse_mode: 'Markdown' }
       );

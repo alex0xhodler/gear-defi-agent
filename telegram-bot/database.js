@@ -767,6 +767,24 @@ class Database {
   }
 
   /**
+   * Get a specific pool by address
+   * @param {string} poolAddress - Pool contract address
+   * @returns {Promise<Object|null>} Pool object or null if not found
+   */
+  getCachedPoolByAddress(poolAddress) {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        `SELECT * FROM pool_cache WHERE LOWER(pool_address) = LOWER(?) AND active = 1`,
+        [poolAddress],
+        (err, row) => {
+          if (err) return reject(err);
+          resolve(row || null);
+        }
+      );
+    });
+  }
+
+  /**
    * Add or update a pool in the cache
    * @param {Object} poolData - Pool information
    * @returns {Promise<Object>} Result with isNew flag

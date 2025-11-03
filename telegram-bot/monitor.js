@@ -89,6 +89,8 @@ async function checkAllMandates() {
           const bestMatch = matchingOpportunities[0];
           const bestAPY = bestMatch.projAPY || bestMatch.apy;
           const opportunityId = bestMatch.pool_address || bestMatch.id || `${bestMatch.strategy}_${asset}`;
+          const chainId = bestMatch.chain_id || 1; // Default to Ethereum mainnet if not specified
+          const poolAddress = bestMatch.pool_address;
 
           // Check if we already notified about this opportunity recently
           const wasNotified = await db.wasRecentlyNotified(mandate.id, opportunityId, 24);
@@ -116,7 +118,7 @@ async function checkAllMandates() {
                 reply_markup: {
                   inline_keyboard: [
                     [
-                      { text: '✅ View Pool', url: `https://app.gearbox.fi/pools/${opportunityId}` },
+                      { text: '✅ View Pool', url: `https://app.gearbox.finance/pools/${chainId}/${poolAddress}` },
                       { text: '📊 More Details', callback_data: `details_${opportunityId}` }
                     ],
                     [
