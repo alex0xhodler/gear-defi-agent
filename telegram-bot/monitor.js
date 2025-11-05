@@ -104,7 +104,7 @@ async function checkAllMandates() {
           console.log(`      🎯 MATCH FOUND! Mandate #${mandate.id} → ${bestMatch.strategy} (${bestAPY.toFixed(2)}% APY)`);
 
           try {
-            // Get APY history for this pool to show change
+            // Get APY history for this pool to show trend
             let apyChangeText = '';
             try {
               const apyHistory = await db.getAPYHistory(poolAddress, chainId, 7);
@@ -112,8 +112,13 @@ async function checkAllMandates() {
                 const previousAPY = apyHistory[1].supply_apy;
                 const apyChange = bestAPY - previousAPY;
                 const changePercent = ((apyChange / previousAPY) * 100).toFixed(1);
-                const changeSymbol = apyChange > 0 ? '📈' : '📉';
-                apyChangeText = `${changeSymbol} *APY Change:* ${previousAPY.toFixed(2)}% → ${bestAPY.toFixed(2)}% (${apyChange > 0 ? '+' : ''}${changePercent}%)\n`;
+
+                if (apyChange > 0) {
+                  apyChangeText = `    ↳ 📈 Rate increased ${Math.abs(changePercent)}% recently\n`;
+                } else if (apyChange < -0.1) {
+                  apyChangeText = `    ↳ 📉 Rate decreased ${Math.abs(changePercent)}% recently\n`;
+                }
+                // If change is negligible (< 0.1%), don't show anything
               }
             } catch (historyErr) {
               console.log(`      ⚠️ Could not fetch APY history: ${historyErr.message}`);
@@ -160,36 +165,60 @@ async function checkAllMandates() {
               collateralsText = `🪙 *Collaterals:* ${collateralsList.join(', ')}\n`;
             }
 
-            // Build pool metrics text (token symbol already included in amounts)
-            let metricsText = `💰 *TVL:* ${tvlFormatted}\n`;
-            if (borrowedFormatted !== 'N/A') {
-              metricsText += `📊 *Borrowed:* ${borrowedFormatted}\n`;
+            // Determine pool health based on utilization
+            let poolHealthEmoji = '🟢';
+            let poolHealthText = '';
+            if (bestMatch.utilization) {
+              if (bestMatch.utilization >= 95) {
+                poolHealthEmoji = '🔴';
+                poolHealthText = '\n⚠️ _High utilization - limited capacity available_';
+              } else if (bestMatch.utilization >= 80) {
+                poolHealthEmoji = '🟡';
+                poolHealthText = '\n⚡ _Active pool - good utilization_';
+              } else {
+                poolHealthEmoji = '🟢';
+                poolHealthText = '\n✅ _Healthy pool - ample capacity_';
+              }
+            }
+
+            // Build pool details (simplified, user-friendly)
+            let poolDetails = '';
+            if (tvlFormatted !== 'N/A') {
+              poolDetails += `\n💰 Pool Size: ${tvlFormatted}`;
             }
             if (utilizationText !== 'N/A') {
-              metricsText += `⚡ *Utilization:* ${utilizationText}\n`;
+              poolDetails += `\n${poolHealthEmoji} Capacity Used: ${utilizationText}`;
             }
+            if (collateralsText) {
+              poolDetails += `\n${collateralsText.replace('🪙 *Collaterals:*', '🔐 Accepts:')}`;
+            }
+
+            // Calculate potential earnings (simplified for retail users)
+            const potentialDaily = (bestAPY / 365).toFixed(2);
+            const potentialMonthly = (bestAPY / 12).toFixed(2);
 
             await bot.sendMessage(
               mandate.telegram_chat_id,
-              `🚨 *New Opportunity Alert!*\n\n` +
-              `💎 *${bestMatch.strategy || bestMatch.pool_name}*\n` +
-              `📈 *APY:* ${bestAPY.toFixed(2)}%\n` +
+              `${poolHealthEmoji} *${mandate.asset} Opportunity Found*\n\n` +
+              `📍 ${bestMatch.strategy || bestMatch.pool_name}\n` +
+              `🌐 ${bestMatch.chain}\n\n` +
+              `💵 *${bestAPY.toFixed(2)}% APY*\n` +
+              `    ↳ ~${potentialMonthly}% per month\n` +
+              `    ↳ ~${potentialDaily}% per day\n` +
               apyChangeText +
-              `🌐 *Chain:* ${bestMatch.chain}\n` +
-              metricsText +
-              collateralsText +
-              `\nThis matches your *${mandate.asset}* alert (min ${mandate.min_apy}% APY).\n\n` +
-              `_Scan #${scanCount} at ${new Date().toLocaleTimeString()}_`,
+              poolDetails +
+              poolHealthText +
+              `\n\n_This rate matches your ${mandate.asset} strategy (${mandate.min_apy}%+ APY target)_`,
               {
                 parse_mode: 'Markdown',
                 reply_markup: {
                   inline_keyboard: [
                     [
-                      { text: '✅ View Pool', url: `https://app.gearbox.finance/pools/${chainId}/${poolAddress}` },
-                      { text: '📊 More Details', callback_data: `details_${opportunityId}` }
+                      { text: '🚀 Deposit Now', url: `https://app.gearbox.finance/pools/${chainId}/${poolAddress}` }
                     ],
                     [
-                      { text: '⏸️ Pause Alert', callback_data: `pause_${mandate.id}` }
+                      { text: '📊 Pool Analytics', url: `https://app.gearbox.finance/pools/${chainId}/${poolAddress}` },
+                      { text: '💤 Snooze Alert', callback_data: `pause_${mandate.id}` }
                     ]
                   ]
                 }
