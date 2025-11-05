@@ -67,10 +67,6 @@ bot.onText(/\/start/, async (msg) => {
             inline_keyboard: [
               [
                 { text: '👛 Scan My Wallet', callback_data: 'onboard_wallet_scan' }
-              ],
-              [
-                { text: '⚙️ Manual Setup', callback_data: 'onboard_manual' },
-                { text: '📖 How It Works', callback_data: 'show_help' }
               ]
             ]
           }
@@ -372,14 +368,11 @@ bot.on('callback_query', async (query) => {
         chatId,
         `👛 *Wallet Scan*\n\n` +
         `━━━━━━━━━━━━━━━━━━━\n\n` +
-        `Send me your Ethereum wallet address and I'll:\n\n` +
-        `✨ Detect all your DeFi tokens\n` +
+        `Just paste your Ethereum wallet address:\n\n` +
+        `✨ I'll detect all your DeFi tokens\n` +
         `📊 Show current best APYs\n` +
-        `💡 Suggest personalized alerts\n` +
-        `🚀 Auto-enable monitoring\n\n` +
-        `━━━━━━━━━━━━━━━━━━━\n\n` +
-        `*Send your address:*\n` +
-        `/wallet 0xYourAddress`,
+        `💡 Auto-enable monitoring\n\n` +
+        `━━━━━━━━━━━━━━━━━━━`,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -812,6 +805,156 @@ bot.on('message', async (msg) => {
 
   // Ignore commands
   if (text.startsWith('/')) return;
+
+  // AUTO-DETECT WALLET ADDRESS: If user pastes an Ethereum address, process it automatically
+  const walletAddressRegex = /^(0x[a-fA-F0-9]{40})$/;
+  const match = text.trim().match(walletAddressRegex);
+
+  if (match) {
+    const walletAddress = match[1];
+    console.log(`🔍 Auto-detected wallet address: ${walletAddress}`);
+
+    // Process as if user used /wallet command
+    try {
+      const user = await db.getOrCreateUser(chatId);
+      await db.updateUserWallet(user.id, walletAddress);
+
+      // Show loading state
+      await bot.sendMessage(
+        chatId,
+        `🔍 *Analyzing ${walletAddress.slice(0, 10)}...${walletAddress.slice(-8)}*\n\n` +
+        `Checking balances across Ethereum and Plasma...`,
+        { parse_mode: 'Markdown' }
+      );
+
+      // Trigger wallet analysis (same logic as /wallet command)
+      // Import the wallet processing logic
+      const { scanWalletPositions } = require('./position-scanner');
+      const { analyzeWalletHoldings } = require('./utils/wallet-analyzer');
+      const { getOpportunityPreviews } = require('./utils/opportunity-preview');
+
+      let positions = [];
+      try {
+        positions = await scanWalletPositions(walletAddress);
+        if (positions.length > 0) {
+          for (const position of positions) {
+            await db.createOrUpdatePosition(user.id, position);
+          }
+        }
+      } catch (scanError) {
+        console.error('Error scanning positions:', scanError.message);
+      }
+
+      const walletAnalysis = await analyzeWalletHoldings(walletAddress);
+
+      if (walletAnalysis.gearboxCompatible.length === 0) {
+        await bot.sendMessage(
+          chatId,
+          `⚠️ *No Compatible Tokens Found*\n\n` +
+          `Your wallet doesn't contain Gearbox-supported tokens.\n\n` +
+          `*Supported tokens:*\n` +
+          `• Stablecoins: USDC, USDT, DAI, GHO, sUSDe, USDT0\n` +
+          `• ETH variants: WETH, wstETH\n` +
+          `• Others: WBTC`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      // Build consolidated portfolio message (same as /wallet command)
+      const totalPositionValue = positions.reduce((sum, p) => sum + (p.currentValue || 0), 0);
+      const idleValue = walletAnalysis.totalValueUSD - totalPositionValue;
+      const opportunityPreviews = await getOpportunityPreviews(walletAnalysis.suggestedAssets);
+
+      let message = `🎊 *Portfolio Analysis Complete*\n\n━━━━━━━━━━━━━━━━━━━\n\n`;
+
+      if (positions.length > 0) {
+        message += `*Active Positions: $${totalPositionValue.toFixed(0)}*\n`;
+        for (const pos of positions) {
+          const emoji = pos.underlyingToken === 'GHO' ? '💰' :
+                       pos.underlyingToken === 'wstETH' ? '🌊' :
+                       pos.underlyingToken === 'WETH' ? '💎' :
+                       pos.underlyingToken === 'USDT0' ? '🪙' : '🪙';
+          let perfFlag = '';
+          const bestRate = opportunityPreviews.previews.find(p => p.asset === pos.underlyingToken);
+          if (bestRate && bestRate.currentAPY && pos.currentSupplyAPY < bestRate.currentAPY - 5) {
+            perfFlag = ' ⚠️';
+          }
+          message += `${emoji} ${pos.currentValue.toFixed(0)} ${pos.underlyingToken} @ ${pos.currentSupplyAPY.toFixed(2)}% APY${perfFlag}\n`;
+        }
+        message += `\n`;
+      }
+
+      if (idleValue > 1 && walletAnalysis.gearboxCompatible.length > 0) {
+        message += `*Idle Assets: $${idleValue.toFixed(0)}*\n`;
+        for (const token of walletAnalysis.gearboxCompatible) {
+          const inPosition = positions.some(p => p.underlyingToken === token.symbol);
+          if (inPosition) continue;
+          const emoji = token.symbol === 'USDC' || token.symbol === 'USDT' || token.symbol === 'DAI' ? '💰' :
+                       token.symbol === 'wstETH' ? '🌊' :
+                       token.symbol === 'WETH' || token.symbol === 'ETH' ? '💎' :
+                       token.symbol === 'WBTC' ? '₿' : '🪙';
+          message += `${emoji} ${parseFloat(token.balance).toFixed(2)} ${token.symbol}\n`;
+        }
+        message += `\n`;
+      }
+
+      message += `━━━━━━━━━━━━━━━━━━━\n\n`;
+
+      if (opportunityPreviews.previews.length > 0) {
+        message += `📊 *Market Check*\n\n`;
+        for (const preview of opportunityPreviews.previews) {
+          if (!preview.currentAPY) continue;
+          const userPos = positions.find(p => p.underlyingToken === preview.asset);
+          if (userPos && userPos.currentSupplyAPY < preview.currentAPY - 5) {
+            message += `Your ${preview.asset} pool is underperforming.\nBetter rate available: ${preview.currentAPY.toFixed(2)}% APY\n\n`;
+          } else if (!userPos && idleValue > 1) {
+            const idleToken = walletAnalysis.gearboxCompatible.find(t =>
+              t.symbol === preview.asset || (preview.asset === 'WETH' && t.symbol === 'ETH')
+            );
+            if (idleToken) {
+              message += `Your idle ${preview.asset} could earn ${preview.currentAPY.toFixed(2)}% APY.\n`;
+            }
+          }
+        }
+        message += `\n`;
+      }
+
+      message += `━━━━━━━━━━━━━━━━━━━\n\n`;
+      message += `✅ Monitoring activated for your assets\n`;
+      message += `🔔 You'll get alerts when better rates appear\n\n`;
+      message += `[📊 View Positions] → /positions`;
+
+      await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+
+      // Auto-activate alerts
+      const { suggestedStrategy, suggestedAssets } = walletAnalysis;
+      const mandates = suggestedAssets.map(asset => ({
+        asset: asset.asset,
+        minAPY: suggestedStrategy.minAPY,
+        risk: suggestedStrategy.risk,
+        maxLeverage: 1,
+        maxPosition: 50000
+      }));
+
+      const createdIds = await db.createMultipleMandates(user.id, mandates, true);
+      const assetList = mandates.map(m => m.asset).join(', ');
+
+      await bot.sendMessage(
+        chatId,
+        `💡 *Smart Alerts*\n\n` +
+        `Watching ${mandates.length} asset${mandates.length > 1 ? 's' : ''}: ${assetList}\n` +
+        `Scanning every 15 min. Adjust anytime in /mandates.`,
+        { parse_mode: 'Markdown' }
+      );
+
+      await showMainMenu(chatId);
+    } catch (error) {
+      console.error('Error processing auto-detected wallet:', error.message);
+      await bot.sendMessage(chatId, '❌ Error analyzing wallet. Please try again.');
+    }
+    return;
+  }
 
   const session = sessions.get(chatId);
   if (!session) return;
