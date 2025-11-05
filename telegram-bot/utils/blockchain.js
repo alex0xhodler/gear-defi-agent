@@ -1,10 +1,11 @@
 /**
  * Blockchain utilities for interacting with Gearbox pools
- * Real balance checking using viem for Ethereum and Plasma chains
+ * Real balance checking using viem for all supported chains:
+ * Ethereum, Arbitrum, Optimism, Sonic, and Plasma
  */
 
 const { createPublicClient, http, parseUnits, formatUnits } = require('viem');
-const { mainnet } = require('viem/chains');
+const { mainnet, arbitrum, optimism } = require('viem/chains');
 const config = require('../config');
 
 // Custom Plasma chain configuration
@@ -33,11 +34,61 @@ const plasmaChain = {
   },
 };
 
+// Custom Sonic chain configuration
+const sonicChain = {
+  id: 146,
+  name: 'Sonic',
+  network: 'sonic',
+  nativeCurrency: {
+    name: 'Sonic',
+    symbol: 'S',
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: [config.blockchain.chains.Sonic.rpcUrl],
+    },
+    public: {
+      http: [config.blockchain.chains.Sonic.rpcUrl],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: 'Sonic Explorer',
+      url: config.blockchain.chains.Sonic.explorerUrl,
+    },
+  },
+};
+
 // Create viem clients for each chain
 const clients = {
   1: createPublicClient({
     chain: mainnet,
     transport: http(config.blockchain.chains.Mainnet.rpcUrl, {
+      timeout: config.blockchain.rpc.timeoutMs,
+      retryCount: config.blockchain.rpc.maxRetries,
+      retryDelay: config.blockchain.rpc.retryDelayMs,
+    }),
+  }),
+  42161: createPublicClient({
+    chain: arbitrum,
+    transport: http(config.blockchain.chains.Arbitrum.rpcUrl, {
+      timeout: config.blockchain.rpc.timeoutMs,
+      retryCount: config.blockchain.rpc.maxRetries,
+      retryDelay: config.blockchain.rpc.retryDelayMs,
+    }),
+  }),
+  10: createPublicClient({
+    chain: optimism,
+    transport: http(config.blockchain.chains.Optimism.rpcUrl, {
+      timeout: config.blockchain.rpc.timeoutMs,
+      retryCount: config.blockchain.rpc.maxRetries,
+      retryDelay: config.blockchain.rpc.retryDelayMs,
+    }),
+  }),
+  146: createPublicClient({
+    chain: sonicChain,
+    transport: http(config.blockchain.chains.Sonic.rpcUrl, {
       timeout: config.blockchain.rpc.timeoutMs,
       retryCount: config.blockchain.rpc.maxRetries,
       retryDelay: config.blockchain.rpc.retryDelayMs,
@@ -55,7 +106,7 @@ const clients = {
 
 /**
  * Get public client for a specific chain
- * @param {number} chainId - Chain ID (1 for Ethereum, 9745 for Plasma)
+ * @param {number} chainId - Chain ID (1=Ethereum, 42161=Arbitrum, 10=Optimism, 146=Sonic, 9745=Plasma)
  * @returns {Object} Viem public client
  */
 function getClient(chainId) {
