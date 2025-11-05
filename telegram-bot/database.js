@@ -264,10 +264,11 @@ class Database {
     return new Promise((resolve, reject) => {
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
       const createdIds = [];
+      const db = this.db; // Capture db reference for use in callbacks
 
       // Use transaction for atomicity
-      this.db.serialize(() => {
-        this.db.run('BEGIN TRANSACTION', (err) => {
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION', (err) => {
           if (err) return reject(err);
         });
 
@@ -278,7 +279,7 @@ class Database {
           const signed = autoSign ? 1 : 0;
           const signedAt = autoSign ? new Date().toISOString() : null;
 
-          this.db.run(
+          db.run(
             `INSERT INTO mandates (user_id, asset, min_apy, max_leverage, risk, max_position, expires_at, signed, signed_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
@@ -295,6 +296,7 @@ class Database {
             function(err) {
               if (err) {
                 hasError = true;
+                console.error('Error inserting mandate:', err.message);
                 return;
               }
 
@@ -304,11 +306,11 @@ class Database {
               // If all mandates processed
               if (completed === mandates.length) {
                 if (hasError) {
-                  this.db.run('ROLLBACK', () => {
+                  db.run('ROLLBACK', () => {
                     reject(new Error('Failed to create all mandates, transaction rolled back'));
                   });
                 } else {
-                  this.db.run('COMMIT', (err) => {
+                  db.run('COMMIT', (err) => {
                     if (err) return reject(err);
                     resolve(createdIds);
                   });
