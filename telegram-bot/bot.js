@@ -60,7 +60,7 @@ bot.onText(/\/start/, async (msg) => {
         `👋 *Welcome to Sigmatic*\n\n` +
         `Your 24/7 Gearbox yield monitoring agent\n\n` +
         `━━━━━━━━━━━━━━━━━━━\n\n` +
-        `I analyze your wallet and find the best yields across 31 pools and 5 chains.\n\n` +
+        `I monitor 31 pools across 5 chains to find you the best yields.\n\n` +
         `Let me show you what you're missing:\n\n` +
         `━━━━━━━━━━━━━━━━━━━\n\n` +
         `📋 Paste your wallet address (0x...) to get started.`,
@@ -425,7 +425,7 @@ bot.on('callback_query', async (query) => {
           `👋 *Welcome to Sigmatic*\n\n` +
           `Your 24/7 Gearbox yield monitoring agent\n\n` +
           `━━━━━━━━━━━━━━━━━━━\n\n` +
-          `I analyze your wallet and find the best yields across 31 pools and 5 chains.\n\n` +
+          `I monitor 31 pools across 5 chains to find you the best yields.\n\n` +
           `Let me show you what you're missing:\n\n` +
           `━━━━━━━━━━━━━━━━━━━\n\n` +
           `📋 Paste your wallet address (0x...) to get started.`,
