@@ -253,6 +253,74 @@ class Database {
     });
   }
 
+  /**
+   * Create multiple mandates at once (batch operation for wallet-first onboarding)
+   * @param {number} userId - User ID
+   * @param {Array} mandates - Array of mandate objects
+   * @param {boolean} autoSign - Automatically sign mandates (default: true)
+   * @returns {Promise<Array>} Array of created mandate IDs
+   */
+  createMultipleMandates(userId, mandates, autoSign = true) {
+    return new Promise((resolve, reject) => {
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+      const createdIds = [];
+
+      // Use transaction for atomicity
+      this.db.serialize(() => {
+        this.db.run('BEGIN TRANSACTION', (err) => {
+          if (err) return reject(err);
+        });
+
+        let completed = 0;
+        let hasError = false;
+
+        mandates.forEach((mandate, index) => {
+          const signed = autoSign ? 1 : 0;
+          const signedAt = autoSign ? new Date().toISOString() : null;
+
+          this.db.run(
+            `INSERT INTO mandates (user_id, asset, min_apy, max_leverage, risk, max_position, expires_at, signed, signed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              userId,
+              mandate.asset,
+              mandate.minAPY || mandate.min_apy,
+              mandate.maxLeverage || mandate.max_leverage || 1,
+              mandate.risk,
+              mandate.maxPosition || mandate.max_position || 50000,
+              expiresAt.toISOString(),
+              signed,
+              signedAt,
+            ],
+            function(err) {
+              if (err) {
+                hasError = true;
+                return;
+              }
+
+              createdIds.push(this.lastID);
+              completed++;
+
+              // If all mandates processed
+              if (completed === mandates.length) {
+                if (hasError) {
+                  this.db.run('ROLLBACK', () => {
+                    reject(new Error('Failed to create all mandates, transaction rolled back'));
+                  });
+                } else {
+                  this.db.run('COMMIT', (err) => {
+                    if (err) return reject(err);
+                    resolve(createdIds);
+                  });
+                }
+              }
+            }
+          );
+        });
+      });
+    });
+  }
+
   getActiveMandates() {
     return new Promise((resolve, reject) => {
       this.db.all(

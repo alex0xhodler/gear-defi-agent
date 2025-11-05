@@ -71,6 +71,12 @@ async function fetchRealOpportunities(params) {
   // Filter pools by asset
   const relevantPools = allPools.filter(pool => {
     const poolToken = pool.underlying_token || '';
+
+    // Support "ALL" asset type for monitoring all pools
+    if (params.asset === 'ALL') {
+      return true; // Include all pools regardless of token
+    }
+
     return poolToken.toUpperCase() === params.asset.toUpperCase();
   });
 

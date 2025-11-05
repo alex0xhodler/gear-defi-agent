@@ -9,6 +9,8 @@ const db = require('./database');
 const { queryFarmOpportunities } = require('./query-opportunities');
 const { scanWalletPositions } = require('./position-scanner');
 const positionCommands = require('./commands/positions');
+const { analyzeWalletHoldings } = require('./utils/wallet-analyzer');
+const { getOpportunityPreviews } = require('./utils/opportunity-preview');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -50,29 +52,24 @@ bot.onText(/\/start/, async (msg) => {
     const hasWallet = !!user.wallet_address;
 
     if (mandates.length === 0 && !hasWallet) {
-      // First-time user - premium onboarding experience
+      // First-time user - wallet-first onboarding (THE AWE MOMENT STARTS HERE)
       await bot.sendMessage(
         chatId,
         `👋 *Welcome to Sigmatic*\n\n` +
-        `Your intelligent agent for Gearbox Protocol\n\n` +
+        `Your 24/7 Gearbox yield monitoring agent\n\n` +
         `━━━━━━━━━━━━━━━━━━━\n\n` +
-        `I monitor lending pools 24/7 across 5 chains and alert you when:\n\n` +
-        `🎯 Rates match your investment strategy\n` +
-        `📈 Your positions change APY\n` +
-        `🆕 New high-yield pools launch\n\n` +
-        `━━━━━━━━━━━━━━━━━━━\n\n` +
-        `*Ready to maximize your capital efficiency?*`,
+        `I analyze your wallet and find the best yields across 31 pools and 5 chains.\n\n` +
+        `Let me show you what you're missing:\n\n` +
+        `━━━━━━━━━━━━━━━━━━━`,
         {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '🚀 Set Up Yield Alerts', callback_data: 'onboard_alerts' }
+                { text: '👛 Scan My Wallet', callback_data: 'onboard_wallet_scan' }
               ],
               [
-                { text: '👛 Connect Wallet (Track Positions)', callback_data: 'onboard_wallet' }
-              ],
-              [
+                { text: '⚙️ Manual Setup', callback_data: 'onboard_manual' },
                 { text: '📖 How It Works', callback_data: 'show_help' }
               ]
             ]
@@ -368,6 +365,142 @@ bot.on('callback_query', async (query) => {
       return;
     } else if (data === 'back_to_menu') {
       await showMainMenu(chatId);
+      return;
+    } else if (data === 'onboard_wallet_scan') {
+      // NEW: Wallet-first onboarding - prompt for wallet address
+      await bot.sendMessage(
+        chatId,
+        `👛 *Wallet Scan*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `Send me your Ethereum wallet address and I'll:\n\n` +
+        `✨ Detect all your DeFi tokens\n` +
+        `📊 Show current best APYs\n` +
+        `💡 Suggest personalized alerts\n` +
+        `🚀 Auto-enable monitoring\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `*Send your address:*\n` +
+        `/wallet 0xYourAddress`,
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    } else if (data === 'onboard_manual') {
+      // NEW: Manual setup with "All Assets" default
+      await bot.sendMessage(
+        chatId,
+        `⚙️ *Manual Alert Setup*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `Choose your strategy:\n\n` +
+        `I'll monitor *ALL assets* (USDC, wstETH, WETH, WBTC, etc.) matching your risk level.\n\n` +
+        `💡 *Tip:* Connect wallet later to filter for only tokens you own.`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🛡️ Conservative · 3%+ APY', callback_data: 'setup_all_assets_conservative' }
+              ],
+              [
+                { text: '⚖️ Balanced · 5%+ APY', callback_data: 'setup_all_assets_balanced' }
+              ],
+              [
+                { text: '🚀 Aggressive · 10%+ APY', callback_data: 'setup_all_assets_aggressive' }
+              ],
+              [
+                { text: '🔙 Back', callback_data: 'back_to_start' }
+              ]
+            ]
+          }
+        }
+      );
+      return;
+    } else if (data.startsWith('setup_all_assets_')) {
+      // NEW: Create "All Assets" mandate
+      const strategy = data.replace('setup_all_assets_', '');
+      await setupAllAssetsMandate(chatId, strategy);
+      return;
+    } else if (data.startsWith('activate_smart_alerts_')) {
+      // NEW: Auto-create personalized alerts based on wallet analysis
+      const userId = parseInt(data.replace('activate_smart_alerts_', ''));
+
+      global.walletSessions = global.walletSessions || new Map();
+      const session = global.walletSessions.get(chatId);
+
+      if (!session || !session.analysis) {
+        await bot.sendMessage(chatId, '⚠️ Session expired. Please run /wallet again.');
+        return;
+      }
+
+      const { analysis } = session;
+      const { suggestedStrategy, suggestedAssets } = analysis;
+
+      // Create mandates for each detected asset
+      const mandates = suggestedAssets.map(asset => ({
+        asset: asset.asset,
+        minAPY: suggestedStrategy.minAPY,
+        risk: suggestedStrategy.risk,
+        maxLeverage: 1,
+        maxPosition: 50000
+      }));
+
+      try {
+        const createdIds = await db.createMultipleMandates(userId, mandates, true);
+
+        const assetList = mandates.map(m => m.asset).join(', ');
+
+        await bot.sendMessage(
+          chatId,
+          `🎉 *Alerts Activated!*\n\n` +
+          `━━━━━━━━━━━━━━━━━━━\n\n` +
+          `✅ Monitoring ${mandates.length} token type(s): ${assetList}\n` +
+          `✅ Minimum ${suggestedStrategy.minAPY}% APY (${suggestedStrategy.strategy})\n` +
+          `✅ ${suggestedStrategy.risk} risk tolerance\n` +
+          `⏰ Scanning every 15 minutes\n\n` +
+          `━━━━━━━━━━━━━━━━━━━\n\n` +
+          `You'll get instant notifications when opportunities match your portfolio!`,
+          { parse_mode: 'Markdown' }
+        );
+
+        // Clean up session
+        global.walletSessions.delete(chatId);
+
+        await showMainMenu(chatId);
+      } catch (error) {
+        console.error('Error activating smart alerts:', error);
+        await bot.sendMessage(chatId, '❌ Error creating alerts. Please try again.');
+      }
+      return;
+    } else if (data === 'back_to_start') {
+      // Restart onboarding
+      const user = await db.getOrCreateUser(chatId);
+      const mandates = await db.getUserMandates(user.id);
+
+      if (mandates.length === 0) {
+        await bot.sendMessage(
+          chatId,
+          `👋 *Welcome to Sigmatic*\n\n` +
+          `Your 24/7 Gearbox yield monitoring agent\n\n` +
+          `━━━━━━━━━━━━━━━━━━━\n\n` +
+          `I analyze your wallet and find the best yields across 31 pools and 5 chains.\n\n` +
+          `Let me show you what you're missing:\n\n` +
+          `━━━━━━━━━━━━━━━━━━━`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '👛 Scan My Wallet', callback_data: 'onboard_wallet_scan' }
+                ],
+                [
+                  { text: '⚙️ Manual Setup', callback_data: 'onboard_manual' },
+                  { text: '📖 How It Works', callback_data: 'show_help' }
+                ]
+              ]
+            }
+          }
+        );
+      } else {
+        await showMainMenu(chatId);
+      }
       return;
     } else if (data === 'onboard_wallet') {
       // Wallet tracking - premium onboarding
@@ -889,48 +1022,138 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
 
     await db.updateUserWallet(user.id, walletAddress);
 
+    // THE AWE MOMENT: Show loading state
     await bot.sendMessage(
       chatId,
-      `✅ *Wallet Connected!*\n\n` +
-      `Address: \`${walletAddress}\`\n\n` +
-      `Scanning for existing positions...`,
+      `🔍 *Analyzing ${walletAddress.slice(0, 10)}...${walletAddress.slice(-8)}*\n\n` +
+      `Checking balances across Ethereum and Plasma...`,
       { parse_mode: 'Markdown' }
     );
 
-    // Scan for positions
+    // Scan for positions (existing feature)
+    let positions = [];
     try {
-      const positions = await scanWalletPositions(walletAddress);
-
+      positions = await scanWalletPositions(walletAddress);
       if (positions.length > 0) {
-        // Store positions in database
         for (const position of positions) {
           await db.createOrUpdatePosition(user.id, position);
         }
+      }
+    } catch (scanError) {
+      console.error('Error scanning positions:', scanError.message);
+    }
 
-        const totalValue = positions.reduce((sum, p) => sum + (p.currentValue || 0), 0);
+    // NEW: Analyze wallet for token holdings
+    try {
+      const walletAnalysis = await analyzeWalletHoldings(walletAddress);
 
+      if (walletAnalysis.gearboxCompatible.length === 0) {
+        // No compatible tokens found
         await bot.sendMessage(
           chatId,
-          `🔍 *Position Scan Complete*\n\n` +
-          `Found ${positions.length} active position(s)!\n` +
-          `Total value: $${totalValue.toFixed(2)}\n\n` +
+          `⚠️ *No Compatible Tokens Found*\n\n` +
+          `Your wallet doesn't contain Gearbox-supported tokens.\n\n` +
+          `*Supported tokens:*\n` +
+          `• Stablecoins: USDC, USDT, DAI, GHO, sUSDe, USDT0\n` +
+          `• ETH variants: WETH, wstETH\n` +
+          `• Others: WBTC\n\n` +
+          `━━━━━━━━━━━━━━━━━━━`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '⚙️ Set Up Manual Alerts', callback_data: 'onboard_manual' }
+                ],
+                [
+                  { text: '📚 Learn About Gearbox', url: 'https://gearbox.finance' }
+                ]
+              ]
+            }
+          }
+        );
+        return;
+      }
+
+      // AWE MOMENT: Show detected tokens with USD values
+      let tokensText = '';
+      for (const token of walletAnalysis.gearboxCompatible) {
+        const emoji = token.symbol === 'USDC' || token.symbol === 'USDT' || token.symbol === 'DAI' ? '💰' :
+                      token.symbol === 'wstETH' ? '🌊' :
+                      token.symbol === 'WETH' || token.symbol === 'ETH' ? '💎' :
+                      token.symbol === 'WBTC' ? '₿' : '🪙';
+        tokensText += `${emoji} ${parseFloat(token.balance).toFixed(2)} ${token.symbol} ($${token.valueUSD.toFixed(0)})\n`;
+      }
+
+      // Fetch current best rates for detected assets
+      const opportunityPreviews = await getOpportunityPreviews(walletAnalysis.suggestedAssets);
+
+      let ratesText = '';
+      if (opportunityPreviews.previews.length > 0) {
+        for (const preview of opportunityPreviews.previews) {
+          if (preview.currentAPY) {
+            const protocol = preview.protocol.includes('on') ? preview.protocol.split('on')[0].trim() : preview.protocol;
+            ratesText += `${preview.asset} → ${preview.currentAPY.toFixed(2)}% APY (${protocol})\n`;
+          }
+        }
+      }
+
+      const earningsText = opportunityPreviews.totalMonthlyEarnings > 0
+        ? `💡 *Potential: ~$${opportunityPreviews.totalMonthlyEarnings.toFixed(2)}/month passive income*`
+        : '';
+
+      await bot.sendMessage(
+        chatId,
+        `✨ *Your Portfolio*\n\n` +
+        tokensText +
+        `\n*Total: $${walletAnalysis.totalValueUSD.toFixed(0)} in DeFi-ready assets*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        (ratesText ? `📊 *Best Available Rates Right Now*\n\n${ratesText}\n` : '') +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        earningsText +
+        (earningsText ? `\n\nWant alerts when rates like these appear?` : `Ready to monitor these assets?`),
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Yes, Monitor These', callback_data: `activate_smart_alerts_${user.id}` }
+              ],
+              [
+                { text: '⚙️ Customize First', callback_data: 'onboard_manual' }
+              ]
+            ]
+          }
+        }
+      );
+
+      // Store wallet analysis in session for smart alert creation
+      global.walletSessions = global.walletSessions || new Map();
+      global.walletSessions.set(chatId, {
+        analysis: walletAnalysis,
+        opportunityPreviews: opportunityPreviews
+      });
+
+      // Show positions if found
+      if (positions.length > 0) {
+        const totalValue = positions.reduce((sum, p) => sum + (p.currentValue || 0), 0);
+        await bot.sendMessage(
+          chatId,
+          `\n🎊 *Active Positions Detected!*\n\n` +
+          `Found ${positions.length} active Gearbox position(s) worth $${totalValue.toFixed(2)}\n\n` +
+          `✅ Position tracking auto-enabled\n` +
+          `🔔 I'll alert you on APY changes\n\n` +
           `Use /positions to view details`,
           { parse_mode: 'Markdown' }
         );
-      } else {
-        await bot.sendMessage(
-          chatId,
-          `📊 No active positions found.\n\n` +
-          `Create a mandate to find yield opportunities:\n/create`,
-          { parse_mode: 'Markdown' }
-        );
       }
-    } catch (scanError) {
-      console.error('Error scanning positions:', scanError);
+
+    } catch (analysisError) {
+      console.error('Error analyzing wallet:', analysisError.message);
       await bot.sendMessage(
         chatId,
-        `⚠️ Wallet connected, but position scan failed.\n\n` +
-        `The monitoring service will scan your wallet automatically.`,
+        `⚠️ Wallet connected, but analysis failed.\n\n` +
+        `You can still set up alerts manually:\n/create`,
         { parse_mode: 'Markdown' }
       );
     }
@@ -1128,6 +1351,122 @@ async function setupDefaultMandate(chatId, template) {
     );
   } catch (error) {
     console.error('Error setting up default mandate:', error);
+    await bot.sendMessage(chatId, '❌ Error setting up mandate. Please try again.');
+  }
+}
+
+// ==========================================
+// HELPER: Setup "All Assets" Mandate (Manual Flow)
+// ==========================================
+
+async function setupAllAssetsMandate(chatId, strategy) {
+  try {
+    const user = await db.getOrCreateUser(chatId);
+
+    const strategies = {
+      'conservative': {
+        asset: 'ALL',
+        minAPY: 3.0,
+        risk: 'Low',
+        maxLeverage: 1,
+        maxPosition: 50000
+      },
+      'balanced': {
+        asset: 'ALL',
+        minAPY: 5.0,
+        risk: 'Medium',
+        maxLeverage: 1,
+        maxPosition: 50000
+      },
+      'aggressive': {
+        asset: 'ALL',
+        minAPY: 10.0,
+        risk: 'High',
+        maxLeverage: 1,
+        maxPosition: 50000
+      }
+    };
+
+    const mandate = strategies[strategy];
+    if (!mandate) return;
+
+    const createdMandate = await db.createMandate(user.id, mandate);
+    await db.signMandate(createdMandate.id);
+
+    await bot.sendMessage(
+      chatId,
+      `🎉 *${strategy.charAt(0).toUpperCase() + strategy.slice(1)} Strategy Activated!*\n\n` +
+      `━━━━━━━━━━━━━━━━━━━\n\n` +
+      `✅ Monitoring ALL assets (USDC, wstETH, WETH, WBTC, etc.)\n` +
+      `✅ Minimum ${mandate.minAPY}% APY\n` +
+      `✅ ${mandate.risk} risk tolerance\n` +
+      `⏰ Scanning every 15 minutes\n\n` +
+      `━━━━━━━━━━━━━━━━━━━\n\n` +
+      `You'll get alerts for ANY pool meeting your criteria!`,
+      { parse_mode: 'Markdown' }
+    );
+
+    // Trigger immediate scan to show opportunities
+    await bot.sendMessage(
+      chatId,
+      `🔍 Running first scan now...`,
+      { parse_mode: 'Markdown' }
+    );
+
+    // Show current opportunities
+    try {
+      const opportunities = await queryFarmOpportunities({
+        asset: 'ALL',
+        min_apy: mandate.minAPY
+      });
+
+      if (opportunities && opportunities.length > 0) {
+        // Sort by APY
+        opportunities.sort((a, b) => (b.projAPY || b.apy) - (a.projAPY || a.apy));
+
+        // Show top 2 opportunities
+        const topOpps = opportunities.slice(0, 2);
+
+        await bot.sendMessage(
+          chatId,
+          `✨ *Found ${opportunities.length} opportunities right now!*\n\n` +
+          `Here are the top 2:\n\n` +
+          `━━━━━━━━━━━━━━━━━━━`,
+          { parse_mode: 'Markdown' }
+        );
+
+        for (const opp of topOpps) {
+          const apy = opp.projAPY || opp.apy || 0;
+          const poolHealth = opp.utilization >= 95 ? '🔴' : opp.utilization >= 80 ? '🟡' : '🟢';
+
+          await bot.sendMessage(
+            chatId,
+            `${poolHealth} *${opp.underlying_token || opp.underlyingToken} Opportunity*\n\n` +
+            `📍 ${opp.strategy || opp.pool_name}\n` +
+            `🌐 ${opp.chain}\n\n` +
+            `💵 *${apy.toFixed(2)}% APY*\n\n` +
+            `━━━━━━━━━━━━━━━━━━━\n\n` +
+            `_Not financial advice. DeFi carries smart contract risk._`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: '🚀 Deposit Now', url: `https://app.gearbox.finance/pools/${opp.chain_id}/${opp.pool_address}` }
+                  ]
+                ]
+              }
+            }
+          );
+        }
+      }
+    } catch (oppError) {
+      console.error('Error showing opportunities:', oppError.message);
+    }
+
+    await showMainMenu(chatId);
+  } catch (error) {
+    console.error('Error setting up all assets mandate:', error);
     await bot.sendMessage(chatId, '❌ Error setting up mandate. Please try again.');
   }
 }
