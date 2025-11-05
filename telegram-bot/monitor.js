@@ -217,7 +217,7 @@ async function checkAllMandates() {
                       { text: '🚀 Deposit Now', url: `https://app.gearbox.finance/pools/${chainId}/${poolAddress}` }
                     ],
                     [
-                      { text: '📊 Pool Analytics', url: `https://app.gearbox.finance/pools/${chainId}/${poolAddress}` },
+                      { text: '📊 Pool Analytics', url: `https://charts.gearbox.finance/pools/${poolAddress}?chain=${chainId}` },
                       { text: '💤 Snooze Alert', callback_data: `pause_${mandate.id}` }
                     ]
                   ]
