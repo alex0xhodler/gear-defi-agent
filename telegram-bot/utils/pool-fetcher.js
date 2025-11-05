@@ -176,18 +176,37 @@ async function getPoolsFromSDK(chainKey, chainConfig) {
       const RAY = BigInt('1000000000000000000000000000'); // 1e27
       const apy = Number((BigInt(poolData.supplyRate || 0n) * BigInt(10000)) / RAY) / 100;
 
-      // Get collateral tokens for this market
+      // Get collateral tokens from credit managers
       const collaterals = [];
+      const collateralSet = new Set();
+
       try {
-        if (market.quotedTokens && market.quotedTokens.length > 0) {
-          // Get top 5 collateral tokens by quota
-          for (const quotedToken of market.quotedTokens.slice(0, 5)) {
-            const tokenSymbol = sdk.tokensMeta.get(quotedToken.token.toLowerCase())?.symbol;
-            if (tokenSymbol && tokenSymbol !== underlyingToken) {
-              collaterals.push(tokenSymbol);
+        // Iterate through all credit managers for this market
+        if (market.creditManagers && market.creditManagers.length > 0) {
+          for (const cm of market.creditManagers) {
+            // Get collateral tokens from credit manager state
+            if (cm.state?.quotaKeeper?.quotedTokens) {
+              for (const qt of cm.state.quotaKeeper.quotedTokens) {
+                const tokenSymbol = sdk.tokensMeta.get(qt.token.toLowerCase())?.symbol;
+                if (tokenSymbol && tokenSymbol !== underlyingToken) {
+                  collateralSet.add(tokenSymbol);
+                }
+              }
+            }
+            // Fallback: try collateralTokens if quotedTokens not available
+            else if (cm.state?.collateralTokens) {
+              for (const token of cm.state.collateralTokens) {
+                const tokenSymbol = sdk.tokensMeta.get(token.toLowerCase())?.symbol;
+                if (tokenSymbol && tokenSymbol !== underlyingToken) {
+                  collateralSet.add(tokenSymbol);
+                }
+              }
             }
           }
         }
+
+        // Convert set to array (top 10 unique collaterals)
+        collaterals.push(...Array.from(collateralSet).slice(0, 10));
       } catch (err) {
         console.log(`      ⚠️ Could not fetch collaterals for ${underlyingToken}: ${err.message}`);
       }
@@ -490,9 +509,12 @@ async function getPlasmaPoolDetails(poolAddress, chainId, chainKey, poolName) {
     const RAY = BigInt('1000000000000000000000000000'); // 1e27
     const apy = Number((BigInt(supplyRate) * BigInt(10000)) / RAY) / 100;
 
-    // Common collaterals on Plasma (USDT0 pools typically accept these)
+    // TODO: Fetch real collaterals from Plasma quota keeper contract
+    // For now, return common ones as fallback since Plasma SDK support is limited
     const collaterals = underlyingToken === 'USDT0'
-      ? ['WETH', 'WBTC', 'stETH', 'cbBTC']
+      ? ['WETH', 'WBTC', 'stETH', 'cbBTC', 'USDC', 'USDT']
+      : underlyingToken === 'WETH'
+      ? ['WBTC', 'stETH', 'cbBTC', 'USDC', 'USDT']
       : null;
 
     return {
