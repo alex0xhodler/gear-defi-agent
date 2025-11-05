@@ -50,78 +50,77 @@ bot.onText(/\/start/, async (msg) => {
     const hasWallet = !!user.wallet_address;
 
     if (mandates.length === 0 && !hasWallet) {
-      // First-time user - show two clear onboarding paths
+      // First-time user - premium onboarding experience
       await bot.sendMessage(
         chatId,
-        `👋 *Welcome to Sigmatic!*\n\n` +
-        `I'm your 24/7 Gearbox agent. I help you maximize capital efficiency by:\n\n` +
-        `📊 *Monitoring your positions* - Get alerts when lending pool APYs change\n` +
-        `🎯 *Finding opportunities* - Notify you when yields match your criteria\n` +
-        `💰 *Maximizing returns* - Never miss a rate change on Gearbox Protocol\n\n` +
-        `*What would you like to do?*`,
+        `👋 *Welcome to Sigmatic*\n\n` +
+        `Your intelligent agent for Gearbox Protocol\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `I monitor lending pools 24/7 across 5 chains and alert you when:\n\n` +
+        `🎯 Rates match your investment strategy\n` +
+        `📈 Your positions change APY\n` +
+        `🆕 New high-yield pools launch\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `*Ready to maximize your capital efficiency?*`,
         {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '👛 Track My Wallet Positions', callback_data: 'onboard_wallet' }
+                { text: '🚀 Set Up Yield Alerts', callback_data: 'onboard_alerts' }
               ],
               [
-                { text: '🔔 Get Yield Opportunity Alerts', callback_data: 'onboard_alerts' }
+                { text: '👛 Connect Wallet (Track Positions)', callback_data: 'onboard_wallet' }
               ],
               [
-                { text: 'ℹ️ Learn More', callback_data: 'show_help' }
+                { text: '📖 How It Works', callback_data: 'show_help' }
               ]
             ]
           }
         }
       );
     } else if (mandates.length === 0) {
-      // Has wallet but no alerts - suggest creating alerts
+      // Has wallet but no alerts - sleek alert setup
       await bot.sendMessage(
         chatId,
-        `👋 *Welcome back!*\n\n` +
-        `Your wallet is connected, but you haven't set up any alerts yet.\n\n` +
-        `🎯 Create an alert so I can notify you about:\n` +
-        `• Lending pools with APYs matching your targets\n` +
-        `• APY changes on Gearbox Protocol\n` +
-        `• New opportunities to maximize your capital`,
-        { parse_mode: 'Markdown' }
-      );
-
-      await bot.sendMessage(
-        chatId,
-        `📋 *Choose a template to get started:*`,
+        `✅ *Wallet Connected*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `Now let's set up yield alerts so I can notify you when rates match your strategy.\n\n` +
+        `*Choose your investment profile:*`,
         {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '🛡️ Conservative (3%+ APY)', callback_data: 'setup_default_conservative' }
+                { text: '🛡️ Conservative · 3%+ APY', callback_data: 'setup_default_conservative' }
               ],
               [
-                { text: '⚖️ Balanced (7%+ APY)', callback_data: 'setup_default_balanced' }
+                { text: '⚖️ Balanced · 7%+ APY', callback_data: 'setup_default_balanced' }
               ],
               [
-                { text: '🚀 Aggressive (12%+ APY)', callback_data: 'setup_default_aggressive' }
+                { text: '🚀 Aggressive · 12%+ APY', callback_data: 'setup_default_aggressive' }
               ],
               [
-                { text: '✏️ Create Custom Alert', callback_data: 'menu_create' }
+                { text: '⚙️ Custom Strategy', callback_data: 'menu_create' }
               ]
             ]
           }
         }
       );
     } else {
-      // Returning user - show main menu
+      // Returning user - sleek status display
+      const alertCount = mandates.length;
+      const alertText = alertCount === 1 ? '1 alert' : `${alertCount} alerts`;
+
       await bot.sendMessage(
         chatId,
-        `👋 *Welcome back!*\n\n` +
-        `You have ${mandates.length} active alert${mandates.length > 1 ? 's' : ''}.\n\n` +
-        `I'm monitoring Gearbox lending pools 24/7 to help you maximize your capital potential:\n` +
-        `📊 Position APY changes\n` +
-        `🎯 New yield opportunities\n` +
-        `💰 Rate changes across all chains`,
+        `👋 *Welcome back*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `✅ ${alertText} active\n` +
+        `🔍 Monitoring 31 pools\n` +
+        `⏰ Scanning every 15 minutes\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `I'm tracking APY changes across Ethereum, Arbitrum, Optimism, Sonic, and Plasma to maximize your capital efficiency.`,
         { parse_mode: 'Markdown' }
       );
 
@@ -158,8 +157,10 @@ bot.onText(/\/create/, async (msg) => {
 
     await bot.sendMessage(
       chatId,
-      `🎯 *Let's create a yield alert!*\n\n` +
-      `What asset are you looking to earn with?`,
+      `🎯 *Create Yield Alert*\n\n` +
+      `━━━━━━━━━━━━━━━━━━━\n\n` +
+      `Which asset would you like to earn yield on?\n\n` +
+      `_I'll notify you when pools match your target APY_`,
       {
         parse_mode: 'Markdown',
         reply_markup: {
@@ -369,47 +370,45 @@ bot.on('callback_query', async (query) => {
       await showMainMenu(chatId);
       return;
     } else if (data === 'onboard_wallet') {
-      // Wallet tracking onboarding path
+      // Wallet tracking - premium onboarding
       await bot.sendMessage(
         chatId,
-        `👛 *Track Your Gearbox Positions*\n\n` +
-        `Connect your wallet and I'll monitor your lending positions 24/7.\n\n` +
-        `*I'll notify you when:*\n` +
-        `📈 Your position APY increases (time to compound or add more)\n` +
-        `📉 Your position APY decreases (consider moving to higher-yield pools)\n` +
-        `🆕 New pools appear with better rates than your current positions\n\n` +
-        `This helps you maximize capital efficiency by never missing a rate change.\n\n` +
-        `Send your wallet address like this:\n` +
-        `/wallet 0xYourWalletAddress`,
+        `👛 *Position Tracking*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `Connect your wallet to automatically track all Gearbox positions.\n\n` +
+        `*I'll alert you when:*\n\n` +
+        `📈 APY increases on your positions\n` +
+        `📉 APY decreases (time to rebalance)\n` +
+        `🆕 Better opportunities emerge\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `*To connect:*\n` +
+        `/wallet 0xYourAddress`,
         { parse_mode: 'Markdown' }
       );
       return;
     } else if (data === 'onboard_alerts') {
-      // Opportunity alerts onboarding path
+      // Yield alerts - premium onboarding
       await bot.sendMessage(
         chatId,
-        `🔔 *Set Up Yield Alerts*\n\n` +
-        `I'll scan all Gearbox lending pools every 15 minutes across 5 chains and notify you when opportunities match your criteria.\n\n` +
-        `*Perfect for:*\n` +
-        `💰 Finding the best rates for idle capital\n` +
-        `🎯 Getting notified when target APYs become available\n` +
-        `📊 Discovering new high-yield pools as they launch\n\n` +
-        `Choose a template to get started:`,
+        `🎯 *Yield Alert Setup*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `I scan 31 pools across 5 chains every 15 minutes.\n\n` +
+        `*Select your strategy:*`,
         {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '🛡️ Conservative (3%+ APY)', callback_data: 'setup_default_conservative' }
+                { text: '🛡️ Conservative · 3%+ APY', callback_data: 'setup_default_conservative' }
               ],
               [
-                { text: '⚖️ Balanced (7%+ APY)', callback_data: 'setup_default_balanced' }
+                { text: '⚖️ Balanced · 7%+ APY', callback_data: 'setup_default_balanced' }
               ],
               [
-                { text: '🚀 Aggressive (12%+ APY)', callback_data: 'setup_default_aggressive' }
+                { text: '🚀 Aggressive · 12%+ APY', callback_data: 'setup_default_aggressive' }
               ],
               [
-                { text: '✏️ Create Custom Alert', callback_data: 'menu_create' }
+                { text: '⚙️ Custom Strategy', callback_data: 'menu_create' }
               ]
             ]
           }
