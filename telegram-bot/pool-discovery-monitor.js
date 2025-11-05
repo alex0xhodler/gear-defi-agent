@@ -97,6 +97,8 @@ async function scanPools(bot) {
         underlying_token: pool.underlyingToken,
         tvl: pool.tvl,
         apy: pool.apy,
+        borrowed: pool.borrowed || 0,
+        utilization: pool.utilization || 0,
       });
 
       if (cacheResult.isNew) {
@@ -105,7 +107,12 @@ async function scanPools(bot) {
           cacheId: cacheResult.id,
         });
         console.log(`   🆕 New pool discovered: ${pool.name} on ${pool.chainName}`);
-        console.log(`      APY: ${pool.apy.toFixed(2)}% | TVL: $${pool.tvl.toFixed(2)}`);
+        console.log(`      APY: ${pool.apy.toFixed(2)}% | TVL: $${pool.tvl.toFixed(2)} | Utilization: ${(pool.utilization || 0).toFixed(1)}%`);
+      } else if (cacheResult.oldAPY && cacheResult.newAPY !== cacheResult.oldAPY) {
+        // Log APY change
+        const apyChange = cacheResult.newAPY - cacheResult.oldAPY;
+        const changeSymbol = apyChange > 0 ? '📈' : '📉';
+        console.log(`   ${changeSymbol} APY changed for ${pool.name}: ${cacheResult.oldAPY.toFixed(2)}% → ${cacheResult.newAPY.toFixed(2)}%`);
       }
     }
 

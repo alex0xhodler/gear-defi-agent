@@ -464,12 +464,12 @@ class Database {
   // APY HISTORY OPERATIONS
   // ==========================================
 
-  recordAPYHistory(poolAddress, chainId, supplyAPY, borrowAPY, tvl) {
+  recordAPYHistory(poolAddress, chainId, supplyAPY, borrowAPY, tvl, borrowed = 0, utilization = 0) {
     return new Promise((resolve, reject) => {
       this.db.run(
-        `INSERT INTO apy_history (pool_address, chain_id, supply_apy, borrow_apy, tvl)
-         VALUES (?, ?, ?, ?, ?)`,
-        [poolAddress, chainId, supplyAPY, borrowAPY, tvl],
+        `INSERT INTO apy_history (pool_address, chain_id, supply_apy, borrow_apy, tvl, borrowed, utilization)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [poolAddress, chainId, supplyAPY, borrowAPY, tvl, borrowed, utilization],
         function(err) {
           if (err) return reject(err);
           resolve({ id: this.lastID });
@@ -798,12 +798,14 @@ class Database {
         pool_symbol,
         underlying_token,
         tvl,
-        apy
+        apy,
+        borrowed = 0,
+        utilization = 0
       } = poolData;
 
       // Check if pool exists
       this.db.get(
-        `SELECT id, discovered_at FROM pool_cache WHERE pool_address = ? AND chain_id = ?`,
+        `SELECT id, discovered_at, apy as old_apy FROM pool_cache WHERE pool_address = ? AND chain_id = ?`,
         [pool_address, chain_id],
         (err, existingPool) => {
           if (err) return reject(err);
@@ -814,15 +816,18 @@ class Database {
               `UPDATE pool_cache
                SET pool_name = ?, pool_symbol = ?, underlying_token = ?,
                    last_tvl = tvl, last_apy = apy,
-                   tvl = ?, apy = ?, last_seen = CURRENT_TIMESTAMP, active = 1
+                   tvl = ?, apy = ?, borrowed = ?, utilization = ?,
+                   last_seen = CURRENT_TIMESTAMP, active = 1
                WHERE pool_address = ? AND chain_id = ?`,
-              [pool_name, pool_symbol, underlying_token, tvl, apy, pool_address, chain_id],
+              [pool_name, pool_symbol, underlying_token, tvl, apy, borrowed, utilization, pool_address, chain_id],
               (err) => {
                 if (err) return reject(err);
                 resolve({
                   id: existingPool.id,
                   isNew: false,
-                  discovered_at: existingPool.discovered_at
+                  discovered_at: existingPool.discovered_at,
+                  oldAPY: existingPool.old_apy,
+                  newAPY: apy
                 });
               }
             );
@@ -830,15 +835,17 @@ class Database {
             // Insert new pool
             this.db.run(
               `INSERT INTO pool_cache
-               (pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, last_tvl, last_apy)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, tvl, apy],
+               (pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, last_tvl, last_apy, borrowed, utilization)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, tvl, apy, borrowed, utilization],
               function(err) {
                 if (err) return reject(err);
                 resolve({
                   id: this.lastID,
                   isNew: true,
-                  discovered_at: new Date().toISOString()
+                  discovered_at: new Date().toISOString(),
+                  oldAPY: null,
+                  newAPY: apy
                 });
               }
             );

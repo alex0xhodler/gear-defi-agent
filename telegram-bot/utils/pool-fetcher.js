@@ -49,6 +49,27 @@ const POOL_ABI = [
     outputs: [{ type: 'uint256' }],
   },
   {
+    name: 'totalBorrowed',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    name: 'availableLiquidity',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    name: 'expectedLiquidity',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
     name: 'supplyRate',
     type: 'function',
     stateMutability: 'view',
@@ -373,7 +394,7 @@ async function getPlasmaPoolDetails(poolAddress, chainId, chainKey, poolName) {
     });
 
     // Fetch pool data in parallel
-    const [symbol, decimals, asset, totalAssets, supplyRate] = await Promise.all([
+    const [symbol, decimals, asset, totalAssets, totalBorrowed, availableLiquidity, supplyRate] = await Promise.all([
       client.readContract({
         address: poolAddress,
         abi: POOL_ABI,
@@ -401,6 +422,18 @@ async function getPlasmaPoolDetails(poolAddress, chainId, chainKey, poolName) {
       client.readContract({
         address: poolAddress,
         abi: POOL_ABI,
+        functionName: 'totalBorrowed',
+      }).catch(() => 0n),
+
+      client.readContract({
+        address: poolAddress,
+        abi: POOL_ABI,
+        functionName: 'availableLiquidity',
+      }).catch(() => 0n),
+
+      client.readContract({
+        address: poolAddress,
+        abi: POOL_ABI,
         functionName: 'supplyRate',
       }).catch(() => 0n),
     ]);
@@ -421,6 +454,11 @@ async function getPlasmaPoolDetails(poolAddress, chainId, chainKey, poolName) {
 
     // Calculate TVL in native token units
     const tvl = Number(totalAssets) / Math.pow(10, decimals);
+    const borrowed = Number(totalBorrowed) / Math.pow(10, decimals);
+    const available = Number(availableLiquidity) / Math.pow(10, decimals);
+
+    // Calculate utilization rate
+    const utilization = tvl > 0 ? (borrowed / tvl) * 100 : 0;
 
     // Calculate APY from supplyRate (RAY format)
     const RAY = BigInt('1000000000000000000000000000'); // 1e27
@@ -436,6 +474,9 @@ async function getPlasmaPoolDetails(poolAddress, chainId, chainKey, poolName) {
       decimals,
       tvl,
       apy,
+      borrowed,
+      available,
+      utilization,
       asset,
       chainName: 'Plasma',
     };

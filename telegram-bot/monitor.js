@@ -104,13 +104,36 @@ async function checkAllMandates() {
           console.log(`      🎯 MATCH FOUND! Mandate #${mandate.id} → ${bestMatch.strategy} (${bestAPY.toFixed(2)}% APY)`);
 
           try {
+            // Get APY history for this pool to show change
+            let apyChangeText = '';
+            try {
+              const apyHistory = await db.getAPYHistory(poolAddress, chainId, 7);
+              if (apyHistory && apyHistory.length > 1) {
+                const previousAPY = apyHistory[1].supply_apy;
+                const apyChange = bestAPY - previousAPY;
+                const changePercent = ((apyChange / previousAPY) * 100).toFixed(1);
+                const changeSymbol = apyChange > 0 ? '📈' : '📉';
+                apyChangeText = `${changeSymbol} *APY Change:* ${previousAPY.toFixed(2)}% → ${bestAPY.toFixed(2)}% (${apyChange > 0 ? '+' : ''}${changePercent}%)\n`;
+              }
+            } catch (historyErr) {
+              console.log(`      ⚠️ Could not fetch APY history: ${historyErr.message}`);
+            }
+
+            // Format TVL and utilization
+            const tvlFormatted = bestMatch.tvl ? '$' + (bestMatch.tvl / 1e6).toFixed(2) + 'M' : 'N/A';
+            const borrowedFormatted = bestMatch.borrowed ? (bestMatch.borrowed / 1e3).toFixed(1) + 'K' : 'N/A';
+            const utilizationText = bestMatch.utilization ? `${bestMatch.utilization.toFixed(1)}%` : 'N/A';
+
             await bot.sendMessage(
               mandate.telegram_chat_id,
               `🚨 *New Opportunity Alert!*\n\n` +
               `💎 *${bestMatch.strategy || bestMatch.pool_name}*\n` +
               `📈 *APY:* ${bestAPY.toFixed(2)}%\n` +
+              apyChangeText +
               `🌐 *Chain:* ${bestMatch.chain}\n` +
-              `💰 *TVL:* ${bestMatch.tvl ? '$' + (bestMatch.tvl / 1e6).toFixed(2) + 'M' : 'N/A'}\n\n` +
+              `💰 *TVL:* ${tvlFormatted}\n` +
+              `📊 *Borrowed:* ${borrowedFormatted} ${bestMatch.underlyingToken || ''}\n` +
+              `⚡ *Utilization:* ${utilizationText}\n\n` +
               `This matches your *${mandate.asset}* alert (min ${mandate.min_apy}% APY).\n\n` +
               `_Found in scan #${scanCount} at ${new Date().toLocaleTimeString()}_`,
               {
