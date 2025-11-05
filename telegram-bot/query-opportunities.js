@@ -109,9 +109,13 @@ async function fetchRealOpportunities(params) {
         leverage: 1, // Non-leveraged by default
         maxLeverage: apyData.maxLeverage || 1,
         healthFactor: null, // Not applicable for non-leveraged
-        tvl: apyData.tvl || 0,
+        tvl: apyData.tvl || pool.tvl || 0,
+        borrowed: pool.borrowed || 0, // From pool cache
+        utilization: pool.utilization || 0, // From pool cache
+        collaterals: pool.collaterals || null, // From pool cache
         risk: determineRiskLevel(apyData.supplyAPY, 1),
         underlying_token: pool.underlying_token,
+        underlyingToken: pool.underlying_token, // Alias for consistency
         decimals: 18, // Default
       };
 

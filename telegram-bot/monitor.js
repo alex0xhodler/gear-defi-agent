@@ -119,10 +119,34 @@ async function checkAllMandates() {
               console.log(`      ⚠️ Could not fetch APY history: ${historyErr.message}`);
             }
 
-            // Format TVL and utilization
-            const tvlFormatted = bestMatch.tvl ? '$' + (bestMatch.tvl / 1e6).toFixed(2) + 'M' : 'N/A';
-            const borrowedFormatted = bestMatch.borrowed ? (bestMatch.borrowed / 1e3).toFixed(1) + 'K' : 'N/A';
-            const utilizationText = bestMatch.utilization ? `${bestMatch.utilization.toFixed(1)}%` : 'N/A';
+            // Format TVL with intelligent units
+            let tvlFormatted = 'N/A';
+            if (bestMatch.tvl) {
+              if (bestMatch.tvl >= 1e6) {
+                tvlFormatted = '$' + (bestMatch.tvl / 1e6).toFixed(2) + 'M';
+              } else if (bestMatch.tvl >= 1e3) {
+                tvlFormatted = '$' + (bestMatch.tvl / 1e3).toFixed(2) + 'K';
+              } else {
+                tvlFormatted = '$' + bestMatch.tvl.toFixed(2);
+              }
+            }
+
+            // Format borrowed amount with intelligent units
+            let borrowedFormatted = 'N/A';
+            if (bestMatch.borrowed && bestMatch.borrowed > 0) {
+              if (bestMatch.borrowed >= 1e6) {
+                borrowedFormatted = (bestMatch.borrowed / 1e6).toFixed(2) + 'M';
+              } else if (bestMatch.borrowed >= 1e3) {
+                borrowedFormatted = (bestMatch.borrowed / 1e3).toFixed(2) + 'K';
+              } else {
+                borrowedFormatted = bestMatch.borrowed.toFixed(2);
+              }
+            }
+
+            // Format utilization
+            const utilizationText = (bestMatch.utilization && bestMatch.utilization > 0)
+              ? `${bestMatch.utilization.toFixed(1)}%`
+              : 'N/A';
 
             // Format collaterals
             let collateralsText = '';
@@ -133,6 +157,15 @@ async function checkAllMandates() {
               collateralsText = `🪙 *Collaterals:* ${collateralsList.join(', ')}\n`;
             }
 
+            // Build pool metrics text
+            let metricsText = `💰 *TVL:* ${tvlFormatted}\n`;
+            if (borrowedFormatted !== 'N/A') {
+              metricsText += `📊 *Borrowed:* ${borrowedFormatted} ${bestMatch.underlyingToken || ''}\n`;
+            }
+            if (utilizationText !== 'N/A') {
+              metricsText += `⚡ *Utilization:* ${utilizationText}\n`;
+            }
+
             await bot.sendMessage(
               mandate.telegram_chat_id,
               `🚨 *New Opportunity Alert!*\n\n` +
@@ -140,12 +173,10 @@ async function checkAllMandates() {
               `📈 *APY:* ${bestAPY.toFixed(2)}%\n` +
               apyChangeText +
               `🌐 *Chain:* ${bestMatch.chain}\n` +
-              `💰 *TVL:* ${tvlFormatted}\n` +
-              `📊 *Borrowed:* ${borrowedFormatted} ${bestMatch.underlyingToken || ''}\n` +
-              `⚡ *Utilization:* ${utilizationText}\n` +
+              metricsText +
               collateralsText +
               `\nThis matches your *${mandate.asset}* alert (min ${mandate.min_apy}% APY).\n\n` +
-              `_Found in scan #${scanCount} at ${new Date().toLocaleTimeString()}_`,
+              `_Scan #${scanCount} at ${new Date().toLocaleTimeString()}_`,
               {
                 parse_mode: 'Markdown',
                 reply_markup: {
@@ -155,7 +186,7 @@ async function checkAllMandates() {
                       { text: '📊 More Details', callback_data: `details_${opportunityId}` }
                     ],
                     [
-                      { text: '⏸️ Pause Mandate', callback_data: `pause_${mandate.id}` }
+                      { text: '⏸️ Pause Alert', callback_data: `pause_${mandate.id}` }
                     ]
                   ]
                 }
