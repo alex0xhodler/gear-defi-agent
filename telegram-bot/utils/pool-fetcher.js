@@ -556,8 +556,8 @@ async function fetchAllPools(minTVL = 0) {
   const allPools = [];
   let chainsScanned = 0;
 
-  // Supported chains for SDK-based discovery
-  const sdkChains = ['Mainnet', 'Arbitrum', 'Optimism', 'Sonic'];
+  // All chains - try SDK for all including Plasma
+  const sdkChains = ['Mainnet', 'Arbitrum', 'Optimism', 'Sonic', 'Plasma'];
 
   for (const chainKey of sdkChains) {
     const chainConfig = config.blockchain.chains[chainKey];
@@ -573,6 +573,23 @@ async function fetchAllPools(minTVL = 0) {
     const pools = await getPoolsFromSDK(chainKey, chainConfig);
 
     if (pools.length === 0) {
+      console.log(`   ℹ️  ${chainKey}: No pools found via SDK`);
+
+      // Fallback for Plasma if SDK fails
+      if (chainKey === 'Plasma' && config.pools.Plasma.length > 0) {
+        console.log(`   📋 ${chainKey}: Trying direct contract calls as fallback...`);
+
+        for (const pool of config.pools.Plasma) {
+          const details = await getPlasmaPoolDetails(pool.address, chainConfig.id, 'Plasma', pool.name);
+
+          if (details) {
+            console.log(`     💎 ${details.name}: $${details.tvl.toFixed(2)} TVL, ${details.apy.toFixed(2)}% APY`);
+            allPools.push(details);
+          }
+        }
+        chainsScanned++;
+      }
+
       continue;
     }
 
@@ -584,23 +601,6 @@ async function fetchAllPools(minTVL = 0) {
       allPools.push(pool);
     }
 
-    console.log();
-  }
-
-  // Handle Plasma separately (not supported by SDK yet)
-  const plasmaConfig = config.blockchain.chains.Plasma;
-  if (plasmaConfig && config.pools.Plasma.length > 0) {
-    console.log(`   📋 Plasma: Fetching ${config.pools.Plasma.length} configured pools`);
-
-    for (const pool of config.pools.Plasma) {
-      const details = await getPlasmaPoolDetails(pool.address, plasmaConfig.id, 'Plasma', pool.name);
-
-      if (details) {
-        console.log(`     💎 ${details.name}: $${details.tvl.toFixed(2)} TVL, ${details.apy.toFixed(2)}% APY`);
-        allPools.push(details);
-      }
-    }
-    chainsScanned++;
     console.log();
   }
 
