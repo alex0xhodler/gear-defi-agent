@@ -169,6 +169,22 @@ async function getPoolsFromSDK(chainKey, chainConfig) {
       const RAY = BigInt('1000000000000000000000000000'); // 1e27
       const apy = Number((BigInt(poolData.supplyRate || 0n) * BigInt(10000)) / RAY) / 100;
 
+      // Get collateral tokens for this market
+      const collaterals = [];
+      try {
+        if (market.quotedTokens && market.quotedTokens.length > 0) {
+          // Get top 5 collateral tokens by quota
+          for (const quotedToken of market.quotedTokens.slice(0, 5)) {
+            const tokenSymbol = sdk.tokensMeta.get(quotedToken.token.toLowerCase())?.symbol;
+            if (tokenSymbol && tokenSymbol !== underlyingToken) {
+              collaterals.push(tokenSymbol);
+            }
+          }
+        }
+      } catch (err) {
+        console.log(`      ⚠️ Could not fetch collaterals for ${underlyingToken}: ${err.message}`);
+      }
+
       pools.push({
         address: poolData.address,
         name: `${underlyingToken} Pool`, // SDK doesn't provide pool name
@@ -181,6 +197,7 @@ async function getPoolsFromSDK(chainKey, chainConfig) {
         apy,
         asset: poolData.underlying,
         chainName: chainConfig.name,
+        collaterals: collaterals.length > 0 ? collaterals : null,
       });
     }
 
@@ -464,6 +481,11 @@ async function getPlasmaPoolDetails(poolAddress, chainId, chainKey, poolName) {
     const RAY = BigInt('1000000000000000000000000000'); // 1e27
     const apy = Number((BigInt(supplyRate) * BigInt(10000)) / RAY) / 100;
 
+    // Common collaterals on Plasma (USDT0 pools typically accept these)
+    const collaterals = underlyingToken === 'USDT0'
+      ? ['WETH', 'WBTC', 'stETH', 'cbBTC']
+      : null;
+
     return {
       address: poolAddress,
       name: poolName,
@@ -479,6 +501,7 @@ async function getPlasmaPoolDetails(poolAddress, chainId, chainKey, poolName) {
       utilization,
       asset,
       chainName: 'Plasma',
+      collaterals,
     };
   } catch (error) {
     console.error(`     ❌ Error fetching Plasma pool ${poolAddress.slice(0, 10)}... details:`, error.message);

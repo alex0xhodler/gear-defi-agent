@@ -99,6 +99,7 @@ async function scanPools(bot) {
         apy: pool.apy,
         borrowed: pool.borrowed || 0,
         utilization: pool.utilization || 0,
+        collaterals: pool.collaterals || null,
       });
 
       if (cacheResult.isNew) {

@@ -800,8 +800,12 @@ class Database {
         tvl,
         apy,
         borrowed = 0,
-        utilization = 0
+        utilization = 0,
+        collaterals = null
       } = poolData;
+
+      // Convert collaterals array to JSON string for storage
+      const collateralsStr = collaterals && collaterals.length > 0 ? JSON.stringify(collaterals) : null;
 
       // Check if pool exists
       this.db.get(
@@ -816,10 +820,10 @@ class Database {
               `UPDATE pool_cache
                SET pool_name = ?, pool_symbol = ?, underlying_token = ?,
                    last_tvl = tvl, last_apy = apy,
-                   tvl = ?, apy = ?, borrowed = ?, utilization = ?,
+                   tvl = ?, apy = ?, borrowed = ?, utilization = ?, collaterals = ?,
                    last_seen = CURRENT_TIMESTAMP, active = 1
                WHERE pool_address = ? AND chain_id = ?`,
-              [pool_name, pool_symbol, underlying_token, tvl, apy, borrowed, utilization, pool_address, chain_id],
+              [pool_name, pool_symbol, underlying_token, tvl, apy, borrowed, utilization, collateralsStr, pool_address, chain_id],
               (err) => {
                 if (err) return reject(err);
                 resolve({
@@ -835,9 +839,9 @@ class Database {
             // Insert new pool
             this.db.run(
               `INSERT INTO pool_cache
-               (pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, last_tvl, last_apy, borrowed, utilization)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, tvl, apy, borrowed, utilization],
+               (pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, last_tvl, last_apy, borrowed, utilization, collaterals)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, tvl, apy, borrowed, utilization, collateralsStr],
               function(err) {
                 if (err) return reject(err);
                 resolve({

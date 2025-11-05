@@ -124,6 +124,15 @@ async function checkAllMandates() {
             const borrowedFormatted = bestMatch.borrowed ? (bestMatch.borrowed / 1e3).toFixed(1) + 'K' : 'N/A';
             const utilizationText = bestMatch.utilization ? `${bestMatch.utilization.toFixed(1)}%` : 'N/A';
 
+            // Format collaterals
+            let collateralsText = '';
+            if (bestMatch.collaterals && bestMatch.collaterals.length > 0) {
+              const collateralsList = Array.isArray(bestMatch.collaterals)
+                ? bestMatch.collaterals
+                : JSON.parse(bestMatch.collaterals);
+              collateralsText = `🪙 *Collaterals:* ${collateralsList.join(', ')}\n`;
+            }
+
             await bot.sendMessage(
               mandate.telegram_chat_id,
               `🚨 *New Opportunity Alert!*\n\n` +
@@ -133,8 +142,9 @@ async function checkAllMandates() {
               `🌐 *Chain:* ${bestMatch.chain}\n` +
               `💰 *TVL:* ${tvlFormatted}\n` +
               `📊 *Borrowed:* ${borrowedFormatted} ${bestMatch.underlyingToken || ''}\n` +
-              `⚡ *Utilization:* ${utilizationText}\n\n` +
-              `This matches your *${mandate.asset}* alert (min ${mandate.min_apy}% APY).\n\n` +
+              `⚡ *Utilization:* ${utilizationText}\n` +
+              collateralsText +
+              `\nThis matches your *${mandate.asset}* alert (min ${mandate.min_apy}% APY).\n\n` +
               `_Found in scan #${scanCount} at ${new Date().toLocaleTimeString()}_`,
               {
                 parse_mode: 'Markdown',
