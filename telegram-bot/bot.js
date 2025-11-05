@@ -1076,77 +1076,119 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
         return;
       }
 
-      // AWE MOMENT: Show detected tokens with USD values
-      let tokensText = '';
-      for (const token of walletAnalysis.gearboxCompatible) {
-        const emoji = token.symbol === 'USDC' || token.symbol === 'USDT' || token.symbol === 'DAI' ? '💰' :
-                      token.symbol === 'wstETH' ? '🌊' :
-                      token.symbol === 'WETH' || token.symbol === 'ETH' ? '💎' :
-                      token.symbol === 'WBTC' ? '₿' : '🪙';
-        tokensText += `${emoji} ${parseFloat(token.balance).toFixed(2)} ${token.symbol} ($${token.valueUSD.toFixed(0)})\n`;
-      }
+      // CONSOLIDATED MESSAGE: Build complete portfolio view
+      const totalPositionValue = positions.reduce((sum, p) => sum + (p.currentValue || 0), 0);
+      const idleValue = walletAnalysis.totalValueUSD - totalPositionValue;
 
-      // Fetch current best rates for detected assets
+      // Fetch current best rates for comparison
       const opportunityPreviews = await getOpportunityPreviews(walletAnalysis.suggestedAssets);
 
-      let ratesText = '';
-      if (opportunityPreviews.previews.length > 0) {
-        for (const preview of opportunityPreviews.previews) {
-          if (preview.currentAPY) {
-            const protocol = preview.protocol.includes('on') ? preview.protocol.split('on')[0].trim() : preview.protocol;
-            ratesText += `${preview.asset} → ${preview.currentAPY.toFixed(2)}% APY (${protocol})\n`;
+      let message = `🎊 *Portfolio Analysis Complete*\n\n━━━━━━━━━━━━━━━━━━━\n\n`;
+
+      // Section 1: Active Positions (if any) - LEAD with this
+      if (positions.length > 0) {
+        message += `*Active Positions: $${totalPositionValue.toFixed(0)}*\n`;
+
+        for (const pos of positions) {
+          const emoji = pos.underlyingToken === 'GHO' ? '💰' :
+                       pos.underlyingToken === 'wstETH' ? '🌊' :
+                       pos.underlyingToken === 'WETH' ? '💎' :
+                       pos.underlyingToken === 'USDT0' ? '🪙' : '🪙';
+
+          // Flag underperforming positions
+          let perfFlag = '';
+          const bestRate = opportunityPreviews.previews.find(p => p.asset === pos.underlyingToken);
+          if (bestRate && bestRate.currentAPY && pos.currentSupplyAPY < bestRate.currentAPY - 5) {
+            perfFlag = ' ⚠️';
           }
+
+          message += `${emoji} ${pos.currentValue.toFixed(0)} ${pos.underlyingToken} @ ${pos.currentSupplyAPY.toFixed(2)}% APY${perfFlag}\n`;
         }
+        message += `\n`;
       }
 
-      const earningsText = opportunityPreviews.totalMonthlyEarnings > 0
-        ? `💡 *Potential: ~$${opportunityPreviews.totalMonthlyEarnings.toFixed(2)}/month passive income*`
-        : '';
+      // Section 2: Idle Assets (if any)
+      if (idleValue > 1 && walletAnalysis.gearboxCompatible.length > 0) {
+        message += `*Idle Assets: $${idleValue.toFixed(0)}*\n`;
 
-      await bot.sendMessage(
-        chatId,
-        `✨ *Your Portfolio*\n\n` +
-        tokensText +
-        `\n*Total: $${walletAnalysis.totalValueUSD.toFixed(0)} in DeFi-ready assets*\n\n` +
-        `━━━━━━━━━━━━━━━━━━━\n\n` +
-        (ratesText ? `📊 *Best Available Rates Right Now*\n\n${ratesText}\n` : '') +
-        `━━━━━━━━━━━━━━━━━━━\n\n` +
-        earningsText +
-        (earningsText ? `\n\nWant alerts when rates like these appear?` : `Ready to monitor these assets?`),
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '✅ Yes, Monitor These', callback_data: `activate_smart_alerts_${chatId}` }
-              ],
-              [
-                { text: '⚙️ Customize First', callback_data: 'onboard_manual' }
-              ]
-            ]
+        for (const token of walletAnalysis.gearboxCompatible) {
+          // Skip if it's already in a position
+          const inPosition = positions.some(p => p.underlyingToken === token.symbol);
+          if (inPosition) continue;
+
+          const emoji = token.symbol === 'USDC' || token.symbol === 'USDT' || token.symbol === 'DAI' ? '💰' :
+                       token.symbol === 'wstETH' ? '🌊' :
+                       token.symbol === 'WETH' || token.symbol === 'ETH' ? '💎' :
+                       token.symbol === 'WBTC' ? '₿' : '🪙';
+          message += `${emoji} ${parseFloat(token.balance).toFixed(2)} ${token.symbol}\n`;
+        }
+        message += `\n`;
+      }
+
+      message += `━━━━━━━━━━━━━━━━━━━\n\n`;
+
+      // Section 3: Market Check - Show opportunity cost
+      if (opportunityPreviews.previews.length > 0) {
+        message += `📊 *Market Check*\n\n`;
+
+        for (const preview of opportunityPreviews.previews) {
+          if (!preview.currentAPY) continue;
+
+          // Check if user has underperforming position
+          const userPos = positions.find(p => p.underlyingToken === preview.asset);
+          if (userPos && userPos.currentSupplyAPY < preview.currentAPY - 5) {
+            message += `Your ${preview.asset} pool is underperforming.\nBetter rate available: ${preview.currentAPY.toFixed(2)}% APY\n\n`;
+          } else if (!userPos && idleValue > 1) {
+            // User has idle assets
+            const idleToken = walletAnalysis.gearboxCompatible.find(t =>
+              t.symbol === preview.asset ||
+              (preview.asset === 'WETH' && t.symbol === 'ETH')
+            );
+            if (idleToken) {
+              message += `Your idle ${preview.asset} could earn ${preview.currentAPY.toFixed(2)}% APY.\n`;
+            }
           }
         }
-      );
+        message += `\n`;
+      }
 
-      // Store wallet analysis in session for smart alert creation
-      global.walletSessions = global.walletSessions || new Map();
-      global.walletSessions.set(chatId, {
-        analysis: walletAnalysis,
-        opportunityPreviews: opportunityPreviews
-      });
+      message += `━━━━━━━━━━━━━━━━━━━\n\n`;
 
-      // Show positions if found
-      if (positions.length > 0) {
-        const totalValue = positions.reduce((sum, p) => sum + (p.currentValue || 0), 0);
+      // Section 4: Auto-activation confirmation
+      message += `✅ Monitoring activated for your assets\n`;
+      message += `🔔 You'll get alerts when better rates appear\n\n`;
+      message += `[📊 View Positions] → /positions`;
+
+      // Send consolidated message
+      await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+
+      // AUTO-ACTIVATE alerts (no buttons, just do it)
+      try {
+        const { suggestedStrategy, suggestedAssets } = walletAnalysis;
+
+        const mandates = suggestedAssets.map(asset => ({
+          asset: asset.asset,
+          minAPY: suggestedStrategy.minAPY,
+          risk: suggestedStrategy.risk,
+          maxLeverage: 1,
+          maxPosition: 50000
+        }));
+
+        const createdIds = await db.createMultipleMandates(user.id, mandates, true);
+        const assetList = mandates.map(m => m.asset).join(', ');
+
+        // Minimal confirmation
         await bot.sendMessage(
           chatId,
-          `\n🎊 *Active Positions Detected!*\n\n` +
-          `Found ${positions.length} active Gearbox position(s) worth $${totalValue.toFixed(2)}\n\n` +
-          `✅ Position tracking auto-enabled\n` +
-          `🔔 I'll alert you on APY changes\n\n` +
-          `Use /positions to view details`,
+          `💡 *Smart Alerts*\n\n` +
+          `Watching ${mandates.length} asset${mandates.length > 1 ? 's' : ''}: ${assetList}\n` +
+          `Scanning every 15 min. Adjust anytime in /mandates.`,
           { parse_mode: 'Markdown' }
         );
+
+        await showMainMenu(chatId);
+      } catch (activationError) {
+        console.error('Error auto-activating alerts:', activationError.message);
       }
 
     } catch (analysisError) {
