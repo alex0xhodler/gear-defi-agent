@@ -161,9 +161,16 @@ async function getPoolsFromSDK(chainKey, chainConfig) {
       // Get underlying token symbol
       const underlyingToken = sdk.tokensMeta.get(poolData.underlying.toLowerCase())?.symbol || 'UNKNOWN';
 
-      // Calculate TVL (expectedLiquidity is in token units)
+      // Calculate TVL and borrowed amounts (all in token units)
       const decimals = sdk.tokensMeta.get(poolData.underlying.toLowerCase())?.decimals || 18;
       const tvl = Number(formatUnits(poolData.expectedLiquidity || 0n, decimals));
+      const availableLiquidity = Number(formatUnits(poolData.availableLiquidity || 0n, decimals));
+
+      // totalBorrowed = expectedLiquidity - availableLiquidity
+      const borrowed = tvl - availableLiquidity;
+
+      // Calculate utilization rate
+      const utilization = tvl > 0 ? (borrowed / tvl) * 100 : 0;
 
       // Calculate APY from supplyRate (RAY format - 1e27)
       const RAY = BigInt('1000000000000000000000000000'); // 1e27
@@ -195,6 +202,8 @@ async function getPoolsFromSDK(chainKey, chainConfig) {
         decimals,
         tvl,
         apy,
+        borrowed,
+        utilization,
         asset: poolData.underlying,
         chainName: chainConfig.name,
         collaterals: collaterals.length > 0 ? collaterals : null,
