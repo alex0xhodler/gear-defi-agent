@@ -223,17 +223,38 @@ bot.on('callback_query', async (query) => {
         await bot.sendMessage(chatId, `You don't have any active alerts yet.\n\nUse the button below to create one! 🚀`);
         await showMainMenu(chatId);
       } else {
-        const mandatesList = mandates
-          .map((m, i) => {
-            const status = m.signed ? '✅ Active' : '⏸️ Draft';
-            return (
-              `${i + 1}. *${m.asset}* - Min ${m.min_apy}% APY\n` +
-              `   Risk: ${m.risk}\n` +
-              `   Status: ${status}`
-            );
-          })
-          .join('\n\n');
-        await bot.sendMessage(chatId, `📋 *Your Active Alerts:*\n\n${mandatesList}`, { parse_mode: 'Markdown' });
+        // Send each mandate as a separate card with delete button
+        await bot.sendMessage(chatId, `📋 *Your Active Alerts (${mandates.length}):*`, { parse_mode: 'Markdown' });
+
+        for (const mandate of mandates) {
+          const status = mandate.signed ? '✅ Active' : '⏸️ Draft';
+          const expiresAt = new Date(mandate.expires_at).toLocaleDateString();
+
+          const mandateText = (
+            `*${mandate.asset}* Alert\n\n` +
+            `📊 Min APY: ${mandate.min_apy}%\n` +
+            `⚖️ Risk: ${mandate.risk}\n` +
+            `💰 Max Position: $${mandate.max_position.toLocaleString()}\n` +
+            `📅 Expires: ${expiresAt}\n` +
+            `Status: ${status}`
+          );
+
+          await bot.sendMessage(
+            chatId,
+            mandateText,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: '🗑️ Delete Alert', callback_data: `delete_mandate_${mandate.id}` }
+                  ]
+                ]
+              }
+            }
+          );
+        }
+
         await showMainMenu(chatId);
       }
       return;
@@ -491,6 +512,89 @@ bot.on('callback_query', async (query) => {
       const mandateId = parseInt(data.replace('pause_', ''));
       await db.pauseMandate(mandateId);
       await bot.sendMessage(chatId, '⏸️ Mandate paused. You won\'t receive alerts for this mandate.');
+    }
+
+    // Handle mandate deletion
+    if (data.startsWith('delete_mandate_')) {
+      const mandateId = parseInt(data.replace('delete_mandate_', ''));
+
+      // Show confirmation dialog
+      await bot.sendMessage(
+        chatId,
+        `⚠️ *Are you sure you want to delete this alert?*\n\n` +
+        `This action cannot be undone. You'll stop receiving notifications for this mandate.`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '✅ Yes, Delete', callback_data: `confirm_delete_${mandateId}` },
+                { text: '❌ Cancel', callback_data: 'menu_list' }
+              ]
+            ]
+          }
+        }
+      );
+      return;
+    }
+
+    // Handle confirmed mandate deletion
+    if (data.startsWith('confirm_delete_')) {
+      const mandateId = parseInt(data.replace('confirm_delete_', ''));
+
+      try {
+        await db.deleteMandate(mandateId);
+        await bot.sendMessage(
+          chatId,
+          `✅ *Alert deleted successfully!*\n\n` +
+          `You won't receive notifications for this mandate anymore.`,
+          { parse_mode: 'Markdown' }
+        );
+
+        // Show remaining mandates
+        const user = await db.getOrCreateUser(chatId);
+        const remainingMandates = await db.getUserMandates(user.id);
+
+        if (remainingMandates.length > 0) {
+          await bot.sendMessage(
+            chatId,
+            `You still have ${remainingMandates.length} active alert${remainingMandates.length > 1 ? 's' : ''}.`,
+            {
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: '📋 View Alerts', callback_data: 'menu_list' }
+                  ],
+                  [
+                    { text: '🏠 Main Menu', callback_data: 'back_to_menu' }
+                  ]
+                ]
+              }
+            }
+          );
+        } else {
+          await bot.sendMessage(
+            chatId,
+            `You don't have any active alerts. Create a new one to start receiving opportunities!`,
+            {
+              reply_markup: {
+                inline_keyboard: [
+                  [
+                    { text: '➕ Create Alert', callback_data: 'menu_create' }
+                  ],
+                  [
+                    { text: '🏠 Main Menu', callback_data: 'back_to_menu' }
+                  ]
+                ]
+              }
+            }
+          );
+        }
+      } catch (error) {
+        console.error('Error deleting mandate:', error);
+        await bot.sendMessage(chatId, '❌ Error deleting alert. Please try again.');
+      }
+      return;
     }
 
     // Handle opportunity approval
