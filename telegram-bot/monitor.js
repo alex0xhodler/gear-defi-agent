@@ -119,27 +119,30 @@ async function checkAllMandates() {
               console.log(`      ⚠️ Could not fetch APY history: ${historyErr.message}`);
             }
 
-            // Format TVL with intelligent units
+            // Format TVL in token units (e.g., "4,000 wstETH" not "$XX")
+            // SDK returns TVL in token amounts, not USD
             let tvlFormatted = 'N/A';
             if (bestMatch.tvl) {
+              const tokenSymbol = bestMatch.underlyingToken || bestMatch.underlying_token || '';
               if (bestMatch.tvl >= 1e6) {
-                tvlFormatted = '$' + (bestMatch.tvl / 1e6).toFixed(2) + 'M';
+                tvlFormatted = (bestMatch.tvl / 1e6).toFixed(2) + 'M ' + tokenSymbol;
               } else if (bestMatch.tvl >= 1e3) {
-                tvlFormatted = '$' + (bestMatch.tvl / 1e3).toFixed(2) + 'K';
+                tvlFormatted = (bestMatch.tvl / 1e3).toFixed(2) + 'K ' + tokenSymbol;
               } else {
-                tvlFormatted = '$' + bestMatch.tvl.toFixed(2);
+                tvlFormatted = bestMatch.tvl.toFixed(2) + ' ' + tokenSymbol;
               }
             }
 
-            // Format borrowed amount with intelligent units
+            // Format borrowed amount in token units (same as TVL)
             let borrowedFormatted = 'N/A';
             if (bestMatch.borrowed && bestMatch.borrowed > 0) {
+              const tokenSymbol = bestMatch.underlyingToken || bestMatch.underlying_token || '';
               if (bestMatch.borrowed >= 1e6) {
-                borrowedFormatted = (bestMatch.borrowed / 1e6).toFixed(2) + 'M';
+                borrowedFormatted = (bestMatch.borrowed / 1e6).toFixed(2) + 'M ' + tokenSymbol;
               } else if (bestMatch.borrowed >= 1e3) {
-                borrowedFormatted = (bestMatch.borrowed / 1e3).toFixed(2) + 'K';
+                borrowedFormatted = (bestMatch.borrowed / 1e3).toFixed(2) + 'K ' + tokenSymbol;
               } else {
-                borrowedFormatted = bestMatch.borrowed.toFixed(2);
+                borrowedFormatted = bestMatch.borrowed.toFixed(2) + ' ' + tokenSymbol;
               }
             }
 
@@ -157,10 +160,10 @@ async function checkAllMandates() {
               collateralsText = `🪙 *Collaterals:* ${collateralsList.join(', ')}\n`;
             }
 
-            // Build pool metrics text
+            // Build pool metrics text (token symbol already included in amounts)
             let metricsText = `💰 *TVL:* ${tvlFormatted}\n`;
             if (borrowedFormatted !== 'N/A') {
-              metricsText += `📊 *Borrowed:* ${borrowedFormatted} ${bestMatch.underlyingToken || ''}\n`;
+              metricsText += `📊 *Borrowed:* ${borrowedFormatted}\n`;
             }
             if (utilizationText !== 'N/A') {
               metricsText += `⚡ *Utilization:* ${utilizationText}\n`;
