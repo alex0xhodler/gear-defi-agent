@@ -420,8 +420,6 @@ bot.on('callback_query', async (query) => {
       return;
     } else if (data.startsWith('activate_smart_alerts_')) {
       // NEW: Auto-create personalized alerts based on wallet analysis
-      const userId = parseInt(data.replace('activate_smart_alerts_', ''));
-
       global.walletSessions = global.walletSessions || new Map();
       const session = global.walletSessions.get(chatId);
 
@@ -433,6 +431,9 @@ bot.on('callback_query', async (query) => {
       const { analysis } = session;
       const { suggestedStrategy, suggestedAssets } = analysis;
 
+      // Get user to create mandates
+      const user = await db.getOrCreateUser(chatId);
+
       // Create mandates for each detected asset
       const mandates = suggestedAssets.map(asset => ({
         asset: asset.asset,
@@ -443,7 +444,7 @@ bot.on('callback_query', async (query) => {
       }));
 
       try {
-        const createdIds = await db.createMultipleMandates(userId, mandates, true);
+        const createdIds = await db.createMultipleMandates(user.id, mandates, true);
 
         const assetList = mandates.map(m => m.asset).join(', ');
 
@@ -1117,7 +1118,7 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '✅ Yes, Monitor These', callback_data: `activate_smart_alerts_${user.id}` }
+                { text: '✅ Yes, Monitor These', callback_data: `activate_smart_alerts_${chatId}` }
               ],
               [
                 { text: '⚙️ Customize First', callback_data: 'onboard_manual' }
