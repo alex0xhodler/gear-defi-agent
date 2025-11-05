@@ -53,8 +53,11 @@ bot.onText(/\/start/, async (msg) => {
       // First-time user - show two clear onboarding paths
       await bot.sendMessage(
         chatId,
-        `👋 *Welcome to Gearbox Sigma Agent!*\n\n` +
-        `I help you maximize your DeFi yields on Gearbox Protocol.\n\n` +
+        `👋 *Welcome to Sigmatic!*\n\n` +
+        `I'm your 24/7 Gearbox agent. I help you maximize capital efficiency by:\n\n` +
+        `📊 *Monitoring your positions* - Get alerts when lending pool APYs change\n` +
+        `🎯 *Finding opportunities* - Notify you when yields match your criteria\n` +
+        `💰 *Maximizing returns* - Never miss a rate change on Gearbox Protocol\n\n` +
         `*What would you like to do?*`,
         {
           parse_mode: 'Markdown',
@@ -78,8 +81,11 @@ bot.onText(/\/start/, async (msg) => {
       await bot.sendMessage(
         chatId,
         `👋 *Welcome back!*\n\n` +
-        `Your wallet is connected, but you don't have any yield alerts yet.\n\n` +
-        `Create an alert to get notified when high-yield opportunities match your criteria!`,
+        `Your wallet is connected, but you haven't set up any alerts yet.\n\n` +
+        `🎯 Create an alert so I can notify you about:\n` +
+        `• Lending pools with APYs matching your targets\n` +
+        `• APY changes on Gearbox Protocol\n` +
+        `• New opportunities to maximize your capital`,
         { parse_mode: 'Markdown' }
       );
 
@@ -111,8 +117,11 @@ bot.onText(/\/start/, async (msg) => {
       await bot.sendMessage(
         chatId,
         `👋 *Welcome back!*\n\n` +
-        `You have ${mandates.length} active alert${mandates.length > 1 ? 's' : ''}.\n` +
-        `I'm watching for opportunities 24/7! 🔍`,
+        `You have ${mandates.length} active alert${mandates.length > 1 ? 's' : ''}.\n\n` +
+        `I'm monitoring Gearbox lending pools 24/7 to help you maximize your capital potential:\n` +
+        `📊 Position APY changes\n` +
+        `🎯 New yield opportunities\n` +
+        `💰 Rate changes across all chains`,
         { parse_mode: 'Markdown' }
       );
 
@@ -363,12 +372,13 @@ bot.on('callback_query', async (query) => {
       // Wallet tracking onboarding path
       await bot.sendMessage(
         chatId,
-        `👛 *Track Your Wallet Positions*\n\n` +
-        `Connect your wallet to automatically track your Gearbox lending positions.\n\n` +
-        `*You'll get alerts for:*\n` +
-        `• APY changes (increases or decreases)\n` +
-        `• Position value updates\n` +
-        `• Pool performance trends\n\n` +
+        `👛 *Track Your Gearbox Positions*\n\n` +
+        `Connect your wallet and I'll monitor your lending positions 24/7.\n\n` +
+        `*I'll notify you when:*\n` +
+        `📈 Your position APY increases (time to compound or add more)\n` +
+        `📉 Your position APY decreases (consider moving to higher-yield pools)\n` +
+        `🆕 New pools appear with better rates than your current positions\n\n` +
+        `This helps you maximize capital efficiency by never missing a rate change.\n\n` +
         `Send your wallet address like this:\n` +
         `/wallet 0xYourWalletAddress`,
         { parse_mode: 'Markdown' }
@@ -378,8 +388,12 @@ bot.on('callback_query', async (query) => {
       // Opportunity alerts onboarding path
       await bot.sendMessage(
         chatId,
-        `🔔 *Get Yield Opportunity Alerts*\n\n` +
-        `I'll monitor Gearbox pools 24/7 and alert you when high-yield opportunities match your criteria.\n\n` +
+        `🔔 *Set Up Yield Alerts*\n\n` +
+        `I'll scan all Gearbox lending pools every 15 minutes across 5 chains and notify you when opportunities match your criteria.\n\n` +
+        `*Perfect for:*\n` +
+        `💰 Finding the best rates for idle capital\n` +
+        `🎯 Getting notified when target APYs become available\n` +
+        `📊 Discovering new high-yield pools as they launch\n\n` +
         `Choose a template to get started:`,
         {
           parse_mode: 'Markdown',
@@ -406,19 +420,21 @@ bot.on('callback_query', async (query) => {
       // Show help from onboarding
       await bot.sendMessage(
         chatId,
-        `🤖 *Gearbox Sigma Agent*\n\n` +
-        `I help you maximize DeFi yields on Gearbox Protocol lending pools.\n\n` +
-        `*Two Ways to Use Me:*\n\n` +
-        `1️⃣ *Position Tracking*\n` +
-        `Connect your wallet and I'll monitor your active positions, alerting you to APY changes.\n\n` +
-        `2️⃣ *Opportunity Alerts*\n` +
-        `Set your criteria (asset, min APY, risk) and I'll scan pools every 15 minutes to find matching opportunities.\n\n` +
+        `🤖 *Meet Sigmatic - Your 24/7 Gearbox Agent*\n\n` +
+        `I help you maximize capital efficiency on Gearbox Protocol by monitoring lending pool APYs and notifying you when opportunities arise.\n\n` +
+        `*How I Work for You:*\n\n` +
+        `📊 *Position Monitoring*\n` +
+        `Connect your wallet and I'll track your Gearbox positions, alerting you whenever lending APYs change so you can rebalance for better returns.\n\n` +
+        `🎯 *Opportunity Alerts*\n` +
+        `Set your criteria (asset, min APY, risk tolerance) and I'll scan all Gearbox pools every 15 minutes across Ethereum, Arbitrum, Optimism, Sonic, and Plasma.\n\n` +
+        `💰 *Capital Efficiency*\n` +
+        `Never miss a rate change. I work 24/7 so you can deploy capital when yields spike and move it when rates drop.\n\n` +
         `*Commands:*\n` +
-        `/wallet [address] - Connect wallet\n` +
-        `/create - Create yield alert\n` +
-        `/positions - View positions\n` +
-        `/opportunities - Check current yields\n\n` +
-        `Ready to start?`,
+        `/wallet [address] - Connect wallet for position tracking\n` +
+        `/create - Create custom yield alert\n` +
+        `/positions - View your positions and APYs\n` +
+        `/opportunities - Check current yields across chains\n\n` +
+        `Ready to maximize your Gearbox potential?`,
         {
           parse_mode: 'Markdown',
           reply_markup: {
