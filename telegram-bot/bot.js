@@ -9,6 +9,8 @@ const db = require('./database');
 const { queryFarmOpportunities } = require('./query-opportunities');
 const { scanWalletPositions } = require('./position-scanner');
 const positionCommands = require('./commands/positions');
+const mandateCommands = require('./commands/mandates');
+const alertCommands = require('./commands/alerts');
 const { analyzeWalletHoldings } = require('./utils/wallet-analyzer');
 const { getOpportunityPreviews } = require('./utils/opportunity-preview');
 
@@ -23,7 +25,7 @@ console.log('🤖 Gearbox Sigma Bot starting...');
 bot.setMyCommands([
   { command: 'start', description: '🏠 Start the bot and view main menu' },
   { command: 'create', description: '➕ Create a new yield alert' },
-  { command: 'list', description: '📋 View your active alerts' },
+  { command: 'alerts', description: '📋 View your active alerts' },
   { command: 'positions', description: '💼 View your active positions' },
   { command: 'opportunities', description: '💎 Check current top yields' },
   { command: 'wallet', description: '💳 Connect or view your wallet' },
@@ -789,6 +791,27 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
+    // Alert-related callbacks
+    if (data === 'show_positions') {
+      await positionCommands.handlePositionsCommand(bot, { chat: { id: chatId } });
+      return;
+    }
+
+    if (data === 'show_alerts') {
+      await mandateCommands.handleMandatesCommand(bot, { chat: { id: chatId } });
+      return;
+    }
+
+    if (data.startsWith('delete_mandate_')) {
+      await mandateCommands.handleDeleteMandate(bot, query);
+      return;
+    }
+
+    if (data === 'add_new_alert') {
+      await mandateCommands.handleAddNewAlert(bot, query);
+      return;
+    }
+
   } catch (error) {
     console.error('Error in callback_query:', error);
     await bot.sendMessage(chatId, '❌ Error processing request. Please try again.');
@@ -920,10 +943,7 @@ bot.on('message', async (msg) => {
         message += `\n`;
       }
 
-      message += `━━━━━━━━━━━━━━━━━━━\n\n`;
-      message += `✅ Monitoring activated for your assets\n`;
-      message += `🔔 You'll get alerts when better rates appear\n\n`;
-      message += `[📊 View Positions] → /positions`;
+      message += `━━━━━━━━━━━━━━━━━━━`;
 
       await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 
@@ -938,14 +958,30 @@ bot.on('message', async (msg) => {
       }));
 
       const createdIds = await db.createMultipleMandates(user.id, mandates, true);
-      const assetList = mandates.map(m => m.asset).join(', ');
+      const assetList = mandates.map(m => `• ${m.asset} (${m.minAPY}%+ APY)`).join('\n');
 
+      // CONSOLIDATED confirmation message with action buttons
       await bot.sendMessage(
         chatId,
-        `💡 *Smart Alerts*\n\n` +
-        `Watching ${mandates.length} asset${mandates.length > 1 ? 's' : ''}: ${assetList}\n` +
-        `Scanning every 15 min. Adjust anytime in /mandates.`,
-        { parse_mode: 'Markdown' }
+        `🎉 *You're All Set!*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `Smart alerts activated:\n${assetList}\n\n` +
+        `I'll notify you when rates match these criteria.\n` +
+        `Scanning every 15 minutes.\n\n` +
+        `━━━━━━━━━━━━━━━━━━━`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '📊 View Positions', callback_data: 'show_positions' }
+              ],
+              [
+                { text: '📋 My Alerts', callback_data: 'show_alerts' }
+              ]
+            ]
+          }
+        }
       );
 
       await showMainMenu(chatId);
@@ -1295,14 +1331,7 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
         message += `\n`;
       }
 
-      message += `━━━━━━━━━━━━━━━━━━━\n\n`;
-
-      // Section 4: Auto-activation confirmation
-      message += `✅ Monitoring activated for your assets\n`;
-      message += `🔔 You'll get alerts when better rates appear\n\n`;
-      message += `[📊 View Positions] → /positions`;
-
-      // Send consolidated message
+      // Send consolidated portfolio message (removed "View Positions" line)
       await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 
       // AUTO-ACTIVATE alerts (no buttons, just do it)
@@ -1318,15 +1347,31 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
         }));
 
         const createdIds = await db.createMultipleMandates(user.id, mandates, true);
-        const assetList = mandates.map(m => m.asset).join(', ');
 
-        // Minimal confirmation
+        // CONSOLIDATED confirmation message with action buttons
+        const assetList = mandates.map(m => `• ${m.asset} (${m.minAPY}%+ APY)`).join('\n');
+
         await bot.sendMessage(
           chatId,
-          `💡 *Smart Alerts*\n\n` +
-          `Watching ${mandates.length} asset${mandates.length > 1 ? 's' : ''}: ${assetList}\n` +
-          `Scanning every 15 min. Adjust anytime in /mandates.`,
-          { parse_mode: 'Markdown' }
+          `🎉 *You're All Set!*\n\n` +
+          `━━━━━━━━━━━━━━━━━━━\n\n` +
+          `Smart alerts activated:\n${assetList}\n\n` +
+          `I'll notify you when rates match these criteria.\n` +
+          `Scanning every 15 minutes.\n\n` +
+          `━━━━━━━━━━━━━━━━━━━`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '📊 View Positions', callback_data: 'show_positions' }
+                ],
+                [
+                  { text: '📋 My Alerts', callback_data: 'show_alerts' }
+                ]
+              ]
+            }
+          }
         );
 
         await showMainMenu(chatId);
@@ -1381,6 +1426,22 @@ bot.onText(/\/stats/, async (msg) => {
 
 bot.onText(/\/positions/, async (msg) => {
   await positionCommands.handlePositionsCommand(bot, msg);
+});
+
+// ==========================================
+// COMMAND: /mandates
+// ==========================================
+
+bot.onText(/\/mandates/, async (msg) => {
+  await mandateCommands.handleMandatesCommand(bot, msg);
+});
+
+// ==========================================
+// COMMAND: /alerts (alias for /mandates)
+// ==========================================
+
+bot.onText(/\/alerts/, async (msg) => {
+  await alertCommands.handleAlertsCommand(bot, msg);
 });
 
 // ==========================================
