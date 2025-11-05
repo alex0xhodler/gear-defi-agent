@@ -222,46 +222,8 @@ bot.on('callback_query', async (query) => {
       );
       return;
     } else if (data === 'menu_list') {
-      const user = await db.getOrCreateUser(chatId);
-      const mandates = await db.getUserMandates(user.id);
-      if (mandates.length === 0) {
-        await bot.sendMessage(chatId, `You don't have any active alerts yet.\n\nUse the button below to create one! 🚀`);
-        await showMainMenu(chatId);
-      } else {
-        // Send each mandate as a separate card with delete button
-        await bot.sendMessage(chatId, `📋 *Your Active Alerts (${mandates.length}):*`, { parse_mode: 'Markdown' });
-
-        for (const mandate of mandates) {
-          const status = mandate.signed ? '✅ Active' : '⏸️ Draft';
-          const expiresAt = new Date(mandate.expires_at).toLocaleDateString();
-
-          const mandateText = (
-            `*${mandate.asset}* Alert\n\n` +
-            `📊 Min APY: ${mandate.min_apy}%\n` +
-            `⚖️ Risk: ${mandate.risk}\n` +
-            `💰 Max Position: $${mandate.max_position.toLocaleString()}\n` +
-            `📅 Expires: ${expiresAt}\n` +
-            `Status: ${status}`
-          );
-
-          await bot.sendMessage(
-            chatId,
-            mandateText,
-            {
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [
-                  [
-                    { text: '🗑️ Delete Alert', callback_data: `delete_mandate_${mandate.id}` }
-                  ]
-                ]
-              }
-            }
-          );
-        }
-
-        await showMainMenu(chatId);
-      }
+      // Use the new simplified alerts display
+      await mandateCommands.handleMandatesCommand(bot, { chat: { id: chatId } });
       return;
     } else if (data === 'menu_opportunities') {
       const user = await db.getOrCreateUser(chatId);
@@ -960,7 +922,7 @@ bot.on('message', async (msg) => {
       const createdIds = await db.createMultipleMandates(user.id, mandates, true);
       const assetList = mandates.map(m => `• ${m.asset} (${m.minAPY}%+ APY)`).join('\n');
 
-      // CONSOLIDATED confirmation message with action buttons
+      // CONSOLIDATED confirmation message with guidance (no buttons, main menu shows anyway)
       await bot.sendMessage(
         chatId,
         `🎉 *You're All Set!*\n\n` +
@@ -968,20 +930,9 @@ bot.on('message', async (msg) => {
         `Smart alerts activated:\n${assetList}\n\n` +
         `I'll notify you when rates match these criteria.\n` +
         `Scanning every 15 minutes.\n\n` +
-        `━━━━━━━━━━━━━━━━━━━`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '📊 View Positions', callback_data: 'show_positions' }
-              ],
-              [
-                { text: '📋 My Alerts', callback_data: 'show_alerts' }
-              ]
-            ]
-          }
-        }
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `💡 Use the menu below to view positions or tweak alerts.`,
+        { parse_mode: 'Markdown' }
       );
 
       await showMainMenu(chatId);
@@ -1348,7 +1299,7 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
 
         const createdIds = await db.createMultipleMandates(user.id, mandates, true);
 
-        // CONSOLIDATED confirmation message with action buttons
+        // CONSOLIDATED confirmation message with guidance (no buttons, main menu shows anyway)
         const assetList = mandates.map(m => `• ${m.asset} (${m.minAPY}%+ APY)`).join('\n');
 
         await bot.sendMessage(
@@ -1358,20 +1309,9 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
           `Smart alerts activated:\n${assetList}\n\n` +
           `I'll notify you when rates match these criteria.\n` +
           `Scanning every 15 minutes.\n\n` +
-          `━━━━━━━━━━━━━━━━━━━`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: '📊 View Positions', callback_data: 'show_positions' }
-                ],
-                [
-                  { text: '📋 My Alerts', callback_data: 'show_alerts' }
-                ]
-              ]
-            }
-          }
+          `━━━━━━━━━━━━━━━━━━━\n\n` +
+          `💡 Use the menu below to view positions or tweak alerts.`,
+          { parse_mode: 'Markdown' }
         );
 
         await showMainMenu(chatId);
