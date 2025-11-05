@@ -62,17 +62,9 @@ bot.onText(/\/start/, async (msg) => {
         `━━━━━━━━━━━━━━━━━━━\n\n` +
         `I analyze your wallet and find the best yields across 31 pools and 5 chains.\n\n` +
         `Let me show you what you're missing:\n\n` +
-        `━━━━━━━━━━━━━━━━━━━`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '👛 Scan My Wallet', callback_data: 'onboard_wallet_scan' }
-              ]
-            ]
-          }
-        }
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `📋 Paste your wallet address (0x...) to get started.`,
+        { parse_mode: 'Markdown' }
       );
     } else if (mandates.length === 0) {
       // Has wallet but no alerts - sleek alert setup
@@ -327,16 +319,11 @@ bot.on('callback_query', async (query) => {
       await showMainMenu(chatId);
       return;
     } else if (data === 'onboard_wallet_scan') {
-      // NEW: Wallet-first onboarding - prompt for wallet address
+      // Obsolete - users now paste address directly from welcome message
+      // Keep for backward compatibility with old sessions
       await bot.sendMessage(
         chatId,
-        `👛 *Wallet Scan*\n\n` +
-        `━━━━━━━━━━━━━━━━━━━\n\n` +
-        `Just paste your Ethereum wallet address:\n\n` +
-        `✨ I'll detect all your DeFi tokens\n` +
-        `📊 Show current best APYs\n` +
-        `💡 Auto-enable monitoring\n\n` +
-        `━━━━━━━━━━━━━━━━━━━`,
+        `📋 Paste your wallet address (0x...) to get started.`,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -440,21 +427,9 @@ bot.on('callback_query', async (query) => {
           `━━━━━━━━━━━━━━━━━━━\n\n` +
           `I analyze your wallet and find the best yields across 31 pools and 5 chains.\n\n` +
           `Let me show you what you're missing:\n\n` +
-          `━━━━━━━━━━━━━━━━━━━`,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: '👛 Scan My Wallet', callback_data: 'onboard_wallet_scan' }
-                ],
-                [
-                  { text: '⚙️ Manual Setup', callback_data: 'onboard_manual' },
-                  { text: '📖 How It Works', callback_data: 'show_help' }
-                ]
-              ]
-            }
-          }
+          `━━━━━━━━━━━━━━━━━━━\n\n` +
+          `📋 Paste your wallet address (0x...) to get started.`,
+          { parse_mode: 'Markdown' }
         );
       } else {
         await showMainMenu(chatId);
