@@ -7,7 +7,7 @@
  * - Telegram bot: Use WalletConnect to sign the built transactions
  */
 
-const { parseUnits, formatUnits, maxUint256 } = require('viem');
+const { parseUnits, formatUnits, maxUint256, encodeFunctionData } = require('viem');
 
 /**
  * ERC20 Token ABI (minimal)
@@ -186,7 +186,7 @@ async function buildDepositTransactions({
     // Encode approve(spender, amount) call
     approvalTx = {
       to: tokenAddress,
-      data: client.encodeFunctionData({
+      data: encodeFunctionData({
         abi: ERC20_ABI,
         functionName: 'approve',
         args: [poolAddress, maxUint256], // Infinite approval for gas savings
@@ -213,7 +213,7 @@ async function buildDepositTransactions({
   // Step 7: Build deposit transaction
   const depositTx = {
     to: poolAddress,
-    data: client.encodeFunctionData({
+    data: encodeFunctionData({
       abi: POOL_ABI,
       functionName: 'depositWithReferral',
       args: [amountWei, userAddress, BigInt(referralCode)],
@@ -298,7 +298,7 @@ async function buildWithdrawTransaction({
   // Use redeem() instead of withdraw() since we know exact shares amount
   const withdrawTx = {
     to: poolAddress,
-    data: client.encodeFunctionData({
+    data: encodeFunctionData({
       abi: POOL_ABI,
       functionName: 'redeem',
       args: [sharesWei, userAddress, userAddress],
