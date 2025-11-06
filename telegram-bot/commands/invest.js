@@ -350,7 +350,79 @@ async function promptWalletConnect(bot, chatId, sessions) {
 
 You need to connect your wallet to sign transactions.
 
-Tap a button below to connect via WalletConnect:`;
+Choose how you want to connect:`;
+
+    // Show connection method choice
+    await bot.sendMessage(chatId, message, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📱 Scan QR Code (Desktop)', callback_data: 'invest_connect_qr' }],
+          [{ text: '🔗 Open Wallet App (Mobile)', callback_data: 'invest_connect_deeplink' }],
+          [{ text: '❌ Cancel', callback_data: 'invest_cancel' }],
+        ],
+      },
+    });
+  } catch (error) {
+    console.error('❌ Error prompting WalletConnect:', error);
+    await bot.sendMessage(chatId, '❌ Failed to initiate wallet connection.');
+  }
+}
+
+/**
+ * Show QR code for WalletConnect
+ */
+async function showQRCode(bot, chatId, sessions) {
+  try {
+    await bot.sendMessage(chatId, '⏳ Generating QR code...');
+
+    // Create WalletConnect session
+    const user = await db.getOrCreateUser(chatId);
+    const { uri, approval } = await walletconnect.createSession(chatId, 1); // Default to Ethereum
+
+    // Store approval promise in session
+    sessions.set(chatId, {
+      ...sessions.get(chatId),
+      walletConnectApproval: approval,
+    });
+
+    // Generate QR code as buffer
+    const QRCode = require('qrcode');
+    const qrBuffer = await QRCode.toBuffer(uri, {
+      errorCorrectionLevel: 'M',
+      type: 'png',
+      width: 400,
+      margin: 2,
+    });
+
+    // Send QR code
+    await bot.sendPhoto(chatId, qrBuffer, {
+      caption: `📱 *Scan with Your Wallet*
+
+Open your mobile wallet app:
+• MetaMask: Tap scan icon in top-right
+• Rabby: Open scanner from menu
+• Rainbow: Tap scan icon
+• Trust: Scan tab at bottom
+
+After scanning, approve the connection in your wallet.`,
+      parse_mode: 'Markdown',
+    });
+
+    // Wait for approval
+    await waitForWalletApproval(bot, chatId, sessions);
+  } catch (error) {
+    console.error('❌ Error showing QR code:', error);
+    await bot.sendMessage(chatId, '❌ Failed to generate QR code. Please try again.');
+  }
+}
+
+/**
+ * Show deep links for mobile wallet apps
+ */
+async function showDeepLinks(bot, chatId, sessions) {
+  try {
+    await bot.sendMessage(chatId, '⏳ Generating connection links...');
 
     // Create WalletConnect session
     const user = await db.getOrCreateUser(chatId);
@@ -369,6 +441,10 @@ Tap a button below to connect via WalletConnect:`;
     const trustLink = walletconnect.getDeepLink(uri, 'trust');
     const wcLink = walletconnect.getDeepLink(uri, 'walletconnect');
 
+    const message = `🔗 *Tap to Open Your Wallet*
+
+Choose your wallet app:`;
+
     await bot.sendMessage(chatId, message, {
       parse_mode: 'Markdown',
       reply_markup: {
@@ -383,15 +459,32 @@ Tap a button below to connect via WalletConnect:`;
       },
     });
 
-    // Wait for approval (with timeout)
+    // Wait for approval
+    await waitForWalletApproval(bot, chatId, sessions);
+  } catch (error) {
+    console.error('❌ Error showing deep links:', error);
+    await bot.sendMessage(chatId, '❌ Failed to generate connection links. Please try again.');
+  }
+}
+
+/**
+ * Wait for wallet approval (shared by QR and deep link flows)
+ */
+async function waitForWalletApproval(bot, chatId, sessions) {
+  try {
     await bot.sendMessage(chatId, '⏳ Waiting for wallet connection...');
+
+    const session = sessions.get(chatId);
+    if (!session || !session.walletConnectApproval) {
+      throw new Error('No approval promise in session');
+    }
 
     const timeout = setTimeout(() => {
       bot.sendMessage(chatId, '⏱️ Connection timeout. Please try again.');
     }, 120_000); // 2 minute timeout
 
     try {
-      const sessionData = await approval;
+      const sessionData = await session.walletConnectApproval;
       clearTimeout(timeout);
 
       await bot.sendMessage(
@@ -408,8 +501,8 @@ Tap a button below to connect via WalletConnect:`;
       await bot.sendMessage(chatId, '❌ Failed to connect wallet. Please try again.');
     }
   } catch (error) {
-    console.error('❌ Error prompting WalletConnect:', error);
-    await bot.sendMessage(chatId, '❌ Failed to initiate wallet connection.');
+    console.error('❌ Error waiting for wallet approval:', error);
+    await bot.sendMessage(chatId, '❌ Connection error. Please try again.');
   }
 }
 
@@ -420,4 +513,6 @@ module.exports = {
   handleAmountSelection,
   handleCustomAmountInput,
   executeDeposit,
+  showQRCode,
+  showDeepLinks,
 };

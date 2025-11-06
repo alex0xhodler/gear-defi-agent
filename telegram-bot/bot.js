@@ -869,6 +869,17 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
+    // WalletConnect connection method selection
+    if (data === 'invest_connect_qr') {
+      await investCommands.showQRCode(bot, chatId, sessions);
+      return;
+    }
+
+    if (data === 'invest_connect_deeplink') {
+      await investCommands.showDeepLinks(bot, chatId, sessions);
+      return;
+    }
+
     if (data === 'invest_cancel') {
       sessions.delete(chatId);
       await bot.sendMessage(chatId, '❌ Investment cancelled.');
