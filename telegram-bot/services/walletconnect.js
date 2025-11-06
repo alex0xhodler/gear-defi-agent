@@ -1,14 +1,15 @@
 /**
- * Reown (WalletConnect v2) service for Telegram bot
+ * WalletConnect v2 service for Telegram bot
  * Handles wallet connection sessions and transaction signing
  */
 
-const { WalletKit } = require('@reown/walletkit');
+const { SignClient } = require('@walletconnect/sign-client');
+const { getSdkError } = require('@walletconnect/utils');
 const db = require('../database');
 
-// Reown configuration
-const REOWN_PROJECT_ID = process.env.WALLETCONNECT_PROJECT_ID || '2abd49041d1b0b2b082b69c65ccb3e52';
-const RELAY_URL = 'wss://relay.walletconnect.org';
+// WalletConnect configuration
+const PROJECT_ID = process.env.WALLETCONNECT_PROJECT_ID || '2abd49041d1b0b2b082b69c65ccb3e52';
+const RELAY_URL = 'wss://relay.walletconnect.com';
 
 // Supported chains (CAIP-2 format: eip155:<chainId>)
 const SUPPORTED_CHAINS = [
@@ -36,30 +37,29 @@ const SUPPORTED_EVENTS = [
 ];
 
 /**
- * Singleton Reown WalletKit client instance
+ * Singleton WalletConnect SignClient instance
  */
-let walletKitClient = null;
+let signClient = null;
 
 /**
- * Initialize Reown WalletKit client
+ * Initialize WalletConnect SignClient
  * Should be called once on bot startup
  */
 async function initializeWalletConnect() {
-  if (walletKitClient) {
-    return walletKitClient;
+  if (signClient) {
+    return signClient;
   }
 
-  if (!REOWN_PROJECT_ID) {
-    console.warn('⚠️ WALLETCONNECT_PROJECT_ID not set. Using default Reown project ID.');
+  if (!PROJECT_ID) {
+    console.warn('⚠️ WALLETCONNECT_PROJECT_ID not set. Using default project ID.');
   }
 
   try {
-    console.log('🔗 Initializing Reown WalletKit client...');
+    console.log('🔗 Initializing WalletConnect SignClient...');
 
-    walletKitClient = await WalletKit.init({
-      core: {
-        projectId: REOWN_PROJECT_ID,
-      },
+    signClient = await SignClient.init({
+      projectId: PROJECT_ID,
+      relayUrl: RELAY_URL,
       metadata: {
         name: 'Gearbox Strategy Agent',
         description: '24/7 DeFi yield monitoring & transaction bot',
@@ -69,12 +69,12 @@ async function initializeWalletConnect() {
     });
 
     // Set up event listeners
-    setupWalletConnectEvents(walletKitClient);
+    setupWalletConnectEvents(signClient);
 
-    console.log('✅ Reown WalletKit client initialized');
-    return walletKitClient;
+    console.log('✅ WalletConnect SignClient initialized');
+    return signClient;
   } catch (error) {
-    console.error('❌ Failed to initialize Reown WalletKit:', error);
+    console.error('❌ Failed to initialize WalletConnect SignClient:', error);
     throw error;
   }
 }
@@ -126,14 +126,14 @@ function setupWalletConnectEvents(client) {
  */
 async function createSession(chatId, chainId = 1) {
   try {
-    if (!walletKitClient) {
+    if (!signClient) {
       await initializeWalletConnect();
     }
 
-    console.log(`🔗 Creating Reown session for chat ${chatId} on chain ${chainId}`);
+    console.log(`🔗 Creating WalletConnect session for chat ${chatId} on chain ${chainId}`);
 
     // Create connection URI
-    const { uri, approval } = await walletKitClient.connect({
+    const { uri, approval } = await signClient.connect({
       requiredNamespaces: {
         eip155: {
           methods: SUPPORTED_METHODS,
@@ -224,12 +224,12 @@ async function getActiveSession(chatId) {
       return null;
     }
 
-    // Check if session still exists in Reown WalletKit client
-    if (!walletKitClient) {
+    // Check if session still exists in WalletConnect SignClient
+    if (!signClient) {
       await initializeWalletConnect();
     }
 
-    const session = walletKitClient.getActiveSessions()[sessionData.topic];
+    const session = signClient.session.get(sessionData.topic);
 
     if (!session) {
       // Session expired or disconnected, clean up database
@@ -267,17 +267,14 @@ async function disconnectSession(chatId) {
       return false;
     }
 
-    if (!walletKitClient) {
+    if (!signClient) {
       await initializeWalletConnect();
     }
 
-    // Disconnect from Reown
-    await walletKitClient.disconnectSession({
+    // Disconnect from WalletConnect
+    await signClient.disconnect({
       topic: activeSession.topic,
-      reason: {
-        code: 6000,
-        message: 'USER_DISCONNECTED',
-      },
+      reason: getSdkError('USER_DISCONNECTED'),
     });
 
     // Remove from database
@@ -310,11 +307,11 @@ async function sendTransaction(chatId, tx) {
       throw new Error('No active WalletConnect session. Please connect your wallet first.');
     }
 
-    if (!walletKitClient) {
+    if (!signClient) {
       await initializeWalletConnect();
     }
 
-    console.log(`📤 Sending transaction via Reown for chat ${chatId}`);
+    console.log(`📤 Sending transaction via WalletConnect for chat ${chatId}`);
 
     // Prepare transaction request
     const chainId = tx.chainId || 1;
@@ -326,8 +323,8 @@ async function sendTransaction(chatId, tx) {
       gas: tx.gas ? `0x${tx.gas.toString(16)}` : undefined,
     };
 
-    // Send transaction via Reown
-    const result = await walletKitClient.request({
+    // Send transaction via WalletConnect
+    const result = await signClient.request({
       topic: activeSession.topic,
       chainId: `eip155:${chainId}`,
       request: {
