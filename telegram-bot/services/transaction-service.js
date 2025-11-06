@@ -3,7 +3,7 @@
  * Coordinates transaction building, signing via WalletConnect, and monitoring
  */
 
-const { buildDepositTransactions, buildWithdrawTransaction, parseSharesFromLogs, parseAssetsFromLogs } = require('../../utils/transaction-builder');
+const { buildDepositTransactions, buildWithdrawTransaction, parseSharesFromLogs, parseAssetsFromLogs } = require('../../utils/transaction-builder.cjs');
 const { getClient } = require('../utils/blockchain');
 const walletconnect = require('./walletconnect');
 const db = require('../database');
@@ -388,7 +388,7 @@ async function estimateTransactionCost({
       });
 
       // Estimate approval + deposit
-      const { estimateGas, getGasPrice } = require('../../utils/transaction-builder');
+      const { estimateGas, getGasPrice } = require('../../utils/transaction-builder.cjs');
 
       const gasPrice = await getGasPrice(client);
 
@@ -420,7 +420,7 @@ async function estimateTransactionCost({
         chainId,
       });
 
-      const { estimateGas, getGasPrice } = require('../../utils/transaction-builder');
+      const { estimateGas, getGasPrice } = require('../../utils/transaction-builder.cjs');
 
       const gasPrice = await getGasPrice(client);
       const gas = await estimateGas(client, txBuilder.withdrawTx, userAddress);
