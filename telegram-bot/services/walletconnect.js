@@ -163,13 +163,17 @@ async function createSession(chatId, chainId = 1) {
         const session = await approval();
         console.log(`✅ Session approved for chat ${chatId}:`, session.topic);
 
-        // Extract wallet address from session
-        const accounts = session.namespaces.eip155?.accounts || [];
+        // Extract wallet address and approved chains from session
+        const namespace = session.namespaces.eip155;
+        const accounts = namespace?.accounts || [];
+        const approvedChains = namespace?.chains || [];
         const walletAddress = accounts[0]?.split(':')[2]; // eip155:1:0x... -> 0x...
 
         if (!walletAddress) {
           throw new Error('No wallet address in session');
         }
+
+        console.log(`✅ Wallet approved chains:`, approvedChains);
 
         // Save session to database
         const user = await db.getOrCreateUser(chatId);
@@ -409,6 +413,11 @@ async function cleanupExpiredSessions() {
   }
 }
 
+// Helper to get signClient (for advanced operations like adding chains)
+function getSignClient() {
+  return signClient;
+}
+
 module.exports = {
   initializeWalletConnect,
   createSession,
@@ -418,4 +427,5 @@ module.exports = {
   hasActiveSession,
   getDeepLink,
   cleanupExpiredSessions,
+  getSignClient,
 };

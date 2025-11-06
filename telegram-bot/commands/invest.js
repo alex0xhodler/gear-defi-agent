@@ -301,6 +301,41 @@ async function executeDeposit(bot, chatId, sessions) {
       return;
     }
 
+    // Validate chain is supported in WalletConnect session
+    const sessionChains = wcSession.session?.namespaces?.eip155?.chains || [];
+    const poolChainId = `eip155:${pool.chain_id}`;
+
+    if (!sessionChains.includes(poolChainId)) {
+      const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma' };
+      const chainName = chainNames[pool.chain_id] || `Chain ${pool.chain_id}`;
+
+      // Try to add the chain to wallet automatically
+      try {
+        await addChainToWallet(walletconnect, chatId, pool.chain_id);
+        await bot.sendMessage(chatId, `✅ ${chainName} network added to your wallet. Continuing...`);
+        // Don't return - continue with transaction
+      } catch (addChainError) {
+        console.log('❌ Failed to add chain to wallet:', addChainError.message);
+
+        await bot.sendMessage(
+          chatId,
+          `⚠️ *Chain Not Supported*\n\n` +
+          `Your wallet doesn't support ${chainName} (chain ${pool.chain_id}).\n\n` +
+          `Approved chains: ${sessionChains.join(', ')}\n\n` +
+          `💡 *Solution:* Manually add ${chainName} network to your wallet:\n` +
+          `• Chain ID: ${pool.chain_id}\n` +
+          `• Name: ${chainName}\n\n` +
+          `Then use /invest to try again.`,
+          { parse_mode: 'Markdown' }
+        );
+
+        // Clear session to allow reconnection
+        sessions.delete(chatId);
+        await walletconnect.disconnectSession(chatId).catch(() => {});
+        return;
+      }
+    }
+
     await bot.sendMessage(chatId, '⏳ Preparing transaction...');
 
     try {
@@ -381,6 +416,55 @@ async function executeDeposit(bot, chatId, sessions) {
     console.error('❌ Error executing deposit:', error);
     await bot.sendMessage(chatId, '❌ An error occurred during transaction.');
   }
+}
+
+/**
+ * Add chain to user's wallet via WalletConnect
+ */
+async function addChainToWallet(walletconnectService, chatId, chainId) {
+  const chainConfigs = {
+    9745: {
+      chainId: '0x2611', // 9745 in hex
+      chainName: 'Plasma',
+      nativeCurrency: { name: 'Plasma', symbol: 'PLM', decimals: 18 },
+      rpcUrls: ['https://rpc.plasm.io'],
+      blockExplorerUrls: ['https://plasma.blockscout.com'],
+    },
+    146: {
+      chainId: '0x92', // 146 in hex
+      chainName: 'Sonic',
+      nativeCurrency: { name: 'Sonic', symbol: 'S', decimals: 18 },
+      rpcUrls: ['https://rpc.sonic.network'],
+      blockExplorerUrls: ['https://sonicscan.org'],
+    },
+  };
+
+  const config = chainConfigs[chainId];
+  if (!config) {
+    throw new Error(`No config for chain ${chainId}`);
+  }
+
+  // Send wallet_addEthereumChain request
+  const session = await walletconnectService.getActiveSession(chatId);
+  if (!session) {
+    throw new Error('No active session');
+  }
+
+  const signClient = walletconnectService.getSignClient();
+  if (!signClient) {
+    await walletconnectService.initializeWalletConnect();
+  }
+
+  const client = walletconnectService.getSignClient();
+
+  await client.request({
+    topic: session.topic,
+    chainId: `eip155:1`, // Send from Ethereum namespace
+    request: {
+      method: 'wallet_addEthereumChain',
+      params: [config],
+    },
+  });
 }
 
 /**
