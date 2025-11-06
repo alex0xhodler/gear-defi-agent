@@ -154,8 +154,8 @@ async function fetchRealOpportunities(params) {
 }
 
 /**
- * Fetch APY data for a specific pool
- * Uses caching to reduce API calls
+ * Fetch APY data for a specific pool directly from on-chain
+ * Uses caching to reduce RPC calls
  */
 async function fetchPoolAPY(poolAddress, chainId) {
   const cacheKey = `${chainId}-${poolAddress}`;
@@ -166,72 +166,24 @@ async function fetchPoolAPY(poolAddress, chainId) {
     return cached.data;
   }
 
+  // Fetch directly from on-chain (no API layer)
   try {
-    // Determine API URL based on chain ID
-    const chainConfig = chainId === 1
-      ? config.blockchain.chains.Mainnet
-      : chainId === 9745
-      ? config.blockchain.chains.Plasma
-      : chainId === 42161
-      ? config.blockchain.chains.Arbitrum
-      : chainId === 10
-      ? config.blockchain.chains.Optimism
-      : chainId === 146
-      ? config.blockchain.chains.Sonic
-      : config.blockchain.chains.Mainnet; // Default to Mainnet
+    const blockchain = require('./utils/blockchain');
+    const onChainAPY = await blockchain.getPoolAPY(poolAddress, chainId);
 
-    // Fetch from Gearbox API
-    const response = await fetch(`${chainConfig.gearboxApiUrl}/pools/${poolAddress}`, {
-      timeout: 10000,
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
+    if (onChainAPY && onChainAPY.supplyAPY !== null) {
+      // Cache the result
+      apyCache.set(cacheKey, {
+        data: onChainAPY,
+        timestamp: Date.now(),
+      });
 
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
+      return onChainAPY;
     }
 
-    const data = await response.json();
-
-    // Extract APY data (adjust based on actual API response structure)
-    const apyData = {
-      supplyAPY: parseFloat(data.apy || data.supplyAPY || 0),
-      borrowAPY: parseFloat(data.borrowAPY || 0),
-      maxLeverage: parseInt(data.maxLeverage || 1),
-      tvl: parseFloat(data.tvl || 0),
-    };
-
-    // Cache the result
-    apyCache.set(cacheKey, {
-      data: apyData,
-      timestamp: Date.now(),
-    });
-
-    return apyData;
+    return null;
   } catch (error) {
-    console.error(`   ❌ Error fetching APY from API for pool ${poolAddress}:`, error.message);
-
-    // Fallback to on-chain APY fetching (especially for Plasma pools)
-    console.log(`   🔗 Fetching APY from on-chain data...`);
-
-    try {
-      const blockchain = require('./utils/blockchain');
-      const onChainAPY = await blockchain.getPoolAPY(poolAddress, chainId);
-
-      if (onChainAPY && onChainAPY.supplyAPY !== null) {
-        // Cache on-chain result
-        apyCache.set(cacheKey, {
-          data: onChainAPY,
-          timestamp: Date.now(),
-        });
-
-        return onChainAPY;
-      }
-    } catch (onChainError) {
-      console.error(`   ❌ Error fetching on-chain APY:`, onChainError.message);
-    }
-
+    console.error(`   ❌ Error fetching on-chain APY for pool ${poolAddress}:`, error.message);
     return null;
   }
 }
