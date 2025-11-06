@@ -137,12 +137,13 @@ async function createSession(chatId, chainId = 1) {
 
     console.log(`🔗 Creating WalletConnect session for chat ${chatId} on chain ${chainId}`);
 
-    // Create connection URI
+    // Create connection URI with all supported chains
+    // Use optionalNamespaces to support all 5 chains, with primary chain in requiredNamespaces
     const { uri, approval } = await signClient.connect({
-      requiredNamespaces: {
+      optionalNamespaces: {
         eip155: {
           methods: SUPPORTED_METHODS,
-          chains: [`eip155:${chainId}`],
+          chains: SUPPORTED_CHAINS, // All 5 chains supported
           events: SUPPORTED_EVENTS,
         },
       },

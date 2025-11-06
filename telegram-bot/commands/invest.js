@@ -418,9 +418,14 @@ async function showQRCode(bot, chatId, sessions) {
   try {
     await bot.sendMessage(chatId, '⏳ Generating QR code...');
 
-    // Create WalletConnect session
+    const session = sessions.get(chatId);
+    if (!session || !session.selectedPool) {
+      throw new Error('No pool selected in session');
+    }
+
+    // Create WalletConnect session for the pool's chain
     const user = await db.getOrCreateUser(chatId);
-    const { uri, approval } = await walletconnect.createSession(chatId, 1); // Default to Ethereum
+    const { uri, approval } = await walletconnect.createSession(chatId, session.selectedPool.chain_id);
 
     // Store approval promise in session
     sessions.set(chatId, {
@@ -466,9 +471,14 @@ async function showDeepLinks(bot, chatId, sessions) {
   try {
     await bot.sendMessage(chatId, '⏳ Generating connection links...');
 
-    // Create WalletConnect session
+    const session = sessions.get(chatId);
+    if (!session || !session.selectedPool) {
+      throw new Error('No pool selected in session');
+    }
+
+    // Create WalletConnect session for the pool's chain
     const user = await db.getOrCreateUser(chatId);
-    const { uri, approval } = await walletconnect.createSession(chatId, 1); // Default to Ethereum
+    const { uri, approval } = await walletconnect.createSession(chatId, session.selectedPool.chain_id);
 
     // Store approval promise in session (we'll need to wait for it)
     sessions.set(chatId, {
