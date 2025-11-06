@@ -893,8 +893,8 @@ bot.on('message', async (msg) => {
   if (text.startsWith('/')) return;
 
   // INVEST FLOW: Handle custom amount input
-  const session = sessions.get(chatId);
-  if (session && session.step === 'awaiting_custom_amount') {
+  const investSession = sessions.get(chatId);
+  if (investSession && investSession.step === 'awaiting_custom_amount') {
     await investCommands.handleCustomAmountInput(bot, chatId, text, sessions);
     return;
   }
