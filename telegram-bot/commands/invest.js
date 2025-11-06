@@ -289,8 +289,10 @@ async function executeDeposit(bot, chatId, sessions) {
     try {
       wcSession = await walletconnect.getActiveSession(chatId);
     } catch (sessionError) {
-      // Session error (expired, invalid, etc.) - clear and reconnect
-      console.log('⚠️ Session error, prompting reconnection:', sessionError.message);
+      // Session error (expired, invalid, "No matching key", etc.)
+      // Disconnect and clear from database to allow fresh reconnection
+      console.log('⚠️ Session error, clearing and reconnecting:', sessionError.message);
+      await walletconnect.disconnectSession(chatId).catch(() => {});
       wcSession = null;
     }
 
@@ -333,15 +335,16 @@ async function executeDeposit(bot, chatId, sessions) {
       });
 
       if (result.error) {
-        // Clear session on error to allow reconnecting with different wallet
+        // Clear both invest session AND WalletConnect session to allow fresh reconnection
         sessions.delete(chatId);
+        await walletconnect.disconnectSession(chatId).catch(() => {}); // Disconnect WC session
 
         let errorMsg = `❌ *Transaction Failed*\n\n${result.error}`;
 
         // Add helpful context for common errors
         if (result.error.includes('Insufficient balance')) {
           errorMsg += `\n\n💡 *Tip:* Make sure your wallet has ${amount} ${pool.underlying_token} on ${getChainName(pool.chain_id)} chain.`;
-          errorMsg += `\n\nTry again with /invest to use a different wallet.`;
+          errorMsg += `\n\nUse /invest again to connect a different wallet.`;
         }
 
         await bot.sendMessage(chatId, errorMsg, {
