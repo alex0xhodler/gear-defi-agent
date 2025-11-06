@@ -378,8 +378,11 @@ function getDeepLink(uri, walletApp = 'metamask') {
     metamask: `https://metamask.app.link/wc?uri=${encodedUri}`,
     rainbow: `https://rnbwapp.com/wc?uri=${encodedUri}`,
     trust: `https://link.trustwallet.com/wc?uri=${encodedUri}`,
+    rabby: `https://rabby.io/wc?uri=${encodedUri}`,
     argent: `https://argent.link/app/wc?uri=${encodedUri}`,
     imtoken: `https://imtoken.me/wc?uri=${encodedUri}`,
+    // Generic WalletConnect modal for any wallet
+    walletconnect: `https://web3modal.com/wc?uri=${encodedUri}`,
   };
 
   return deepLinks[walletApp] || deepLinks.metamask;

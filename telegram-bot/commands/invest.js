@@ -365,15 +365,19 @@ Tap a button below to connect via WalletConnect:`;
     // Generate deep links
     const metamaskLink = walletconnect.getDeepLink(uri, 'metamask');
     const rainbowLink = walletconnect.getDeepLink(uri, 'rainbow');
+    const rabbyLink = walletconnect.getDeepLink(uri, 'rabby');
     const trustLink = walletconnect.getDeepLink(uri, 'trust');
+    const wcLink = walletconnect.getDeepLink(uri, 'walletconnect');
 
     await bot.sendMessage(chatId, message, {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [
-          [{ text: '🦊 Open in MetaMask', url: metamaskLink }],
-          [{ text: '🌈 Open in Rainbow', url: rainbowLink }],
-          [{ text: '💼 Open in Trust Wallet', url: trustLink }],
+          [{ text: '🦊 MetaMask', url: metamaskLink }],
+          [{ text: '🐰 Rabby', url: rabbyLink }],
+          [{ text: '🌈 Rainbow', url: rainbowLink }],
+          [{ text: '💼 Trust Wallet', url: trustLink }],
+          [{ text: '🔗 Other Wallets', url: wcLink }],
           [{ text: '❌ Cancel', callback_data: 'invest_cancel' }],
         ],
       },
