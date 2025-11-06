@@ -54,19 +54,17 @@ function getChainName(chainId) {
 }
 
 /**
- * Start /invest command
+ * Start /lend command
  */
 async function handleInvestCommand(bot, msg) {
   const chatId = msg.chat.id;
 
   try {
-    const message = `💰 *What's your investment goal?*
+    const message = `What's your goal?
 
-Choose the strategy that matches your objectives:
-
-📈 *Maximize Growth* - Highest APY pools across all chains
-⚖️ *Balanced Returns* - Stable mid-tier pools
-🛡️ *Safety First* - Conservative, proven pools`;
+📈 *Maximize Yield* - Highest APY pools
+⚖️ *Balanced* - Stable mid-tier pools
+🛡️ *Conservative* - Proven, lower-risk pools`;
 
     await bot.sendMessage(chatId, message, {
       parse_mode: 'Markdown',
@@ -212,13 +210,13 @@ Enter amount or use quick select:`;
 }
 
 /**
- * Handle amount selection
+ * Handle amount selection - INSTANT QR CODE (no confirmation screens)
  */
 async function handleAmountSelection(bot, chatId, amount, sessions) {
   try {
     const session = sessions.get(chatId);
     if (!session || !session.selectedPool) {
-      await bot.sendMessage(chatId, '❌ Session expired. Please start again with /invest');
+      await bot.sendMessage(chatId, 'Session expired. Try /lend again.');
       return;
     }
 
@@ -226,35 +224,20 @@ async function handleAmountSelection(bot, chatId, amount, sessions) {
     const amountNum = parseFloat(amount);
 
     if (isNaN(amountNum) || amountNum <= 0) {
-      await bot.sendMessage(chatId, '❌ Invalid amount. Please enter a positive number.');
+      await bot.sendMessage(chatId, 'Enter a valid amount.');
       return;
     }
 
     // Update session
     sessions.set(chatId, {
       ...session,
-      step: 'review',
+      step: 'executing',
       amount: amount,
     });
 
-    // Determine confirmation type
-    const confirmType = confirmation.getConfirmationFlow(amountNum);
+    // INSTANT QR CODE - No confirmation screens
+    await showQRCodeWithRecap(bot, chatId, sessions, pool, amount);
 
-    // Generate confirmation message
-    const { message, keyboard } = confirmation.generateDepositConfirmation({
-      poolName: pool.pool_name,
-      poolChain: getChainName(pool.chain_id),
-      tokenSymbol: pool.underlying_token,
-      amount: amount,
-      apy: pool.apy ? pool.apy.toFixed(2) : '0',
-      estimatedGas: '0.003', // Rough estimate
-      confirmationType: confirmType,
-    });
-
-    await bot.sendMessage(chatId, message, {
-      parse_mode: 'Markdown',
-      reply_markup: keyboard,
-    });
   } catch (error) {
     console.error('❌ Error handling amount selection:', error);
     await bot.sendMessage(chatId, '❌ An error occurred. Please try again.');
@@ -414,17 +397,17 @@ async function executeDeposit(bot, chatId, sessions) {
       // Build success message with link to manage position
       const manageUrl = `https://app.gearbox.finance/pools/${pool.chain_id}/${pool.pool_address}`;
 
-      let successMessage = `✅ *Deposit Successful!*\n\n`;
-      successMessage += `Deposited: ${amount} ${pool.underlying_token}\n`;
-      successMessage += `Pool: ${pool.pool_name}\n`;
+      // Clean, succinct success message
+      let successMessage = `✅ Deposited *${amount} ${pool.underlying_token}*\n\n`;
+      successMessage += `Pool: ${pool.pool_name} (${pool.apy?.toFixed(2) || '—'}% APY)\n`;
       if (result.shares) {
-        successMessage += `Shares Received: ${result.shares}\n`;
+        successMessage += `Shares: ${result.shares}\n`;
       }
       if (result.depositTxHash) {
-        successMessage += `\nTransaction: \`${result.depositTxHash}\`\n`;
+        const shortTx = `${result.depositTxHash.slice(0, 10)}...${result.depositTxHash.slice(-8)}`;
+        successMessage += `Tx: ${shortTx}\n`;
       }
-      successMessage += `\nYour position is now active and earning yield! 🎉\n\n`;
-      successMessage += `[Manage Position on Gearbox](${manageUrl})`;
+      successMessage += `\n[Manage Position](${manageUrl})`;
 
       await bot.sendMessage(chatId, successMessage, {
         parse_mode: 'Markdown',
@@ -444,6 +427,123 @@ async function executeDeposit(bot, chatId, sessions) {
   } catch (error) {
     console.error('❌ Error executing deposit:', error);
     await bot.sendMessage(chatId, '❌ An error occurred during transaction.');
+  }
+}
+
+/**
+ * Execute deposit silently (no status messages)
+ */
+async function executeDepositSilent(bot, chatId, sessions) {
+  try {
+    const session = sessions.get(chatId);
+    if (!session || !session.selectedPool || !session.amount) {
+      await bot.sendMessage(chatId, 'Session expired. Try /invest again.');
+      return;
+    }
+
+    const pool = session.selectedPool;
+    const amount = session.amount;
+
+    // Check WalletConnect session
+    let wcSession;
+    try {
+      wcSession = await walletconnect.getActiveSession(chatId);
+    } catch (sessionError) {
+      console.log('⚠️ Session error:', sessionError.message);
+      wcSession = null;
+    }
+
+    if (!wcSession) {
+      await bot.sendMessage(chatId, 'Connection lost. Try /invest again.');
+      return;
+    }
+
+    // Validate chain
+    const sessionChains = wcSession.session?.namespaces?.eip155?.chains || [];
+    const poolChainId = `eip155:${pool.chain_id}`;
+
+    if (!sessionChains.includes(poolChainId)) {
+      const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma' };
+      const chainName = chainNames[pool.chain_id] || pool.chain_id;
+
+      await bot.sendMessage(chatId, `Your wallet doesn't support ${chainName}. Add it and try again.`);
+      sessions.delete(chatId);
+      await walletconnect.disconnectSession(chatId).catch(() => {});
+      return;
+    }
+
+    // Execute (no "preparing..." message)
+    try {
+      const { getClient } = require('../utils/blockchain');
+      const client = getClient(pool.chain_id);
+
+      const tokenAddress = await client.readContract({
+        address: pool.pool_address,
+        abi: [{ name: 'asset', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }],
+        functionName: 'asset',
+      });
+
+      const result = await transactionService.executeDeposit({
+        chatId,
+        poolAddress: pool.pool_address,
+        tokenAddress: tokenAddress,
+        amount: amount,
+        chainId: pool.chain_id,
+        referralCode: 0,
+      });
+
+      if (result.error) {
+        sessions.delete(chatId);
+        await walletconnect.disconnectSession(chatId).catch(() => {});
+
+        if (result.error.includes('Insufficient balance')) {
+          await bot.sendMessage(chatId, `Insufficient ${pool.underlying_token} balance. Try /invest with a funded wallet.`);
+        } else {
+          await bot.sendMessage(chatId, `Transaction failed: ${result.error}`);
+        }
+        return;
+      }
+
+      // Save position
+      const user = await db.getOrCreateUser(chatId);
+      await db.createOrUpdatePosition(user.id, {
+        poolAddress: pool.pool_address,
+        chainId: pool.chain_id,
+        underlyingToken: tokenAddress,
+        shares: parseFloat(result.shares || '0'),
+        depositedAmount: parseFloat(amount),
+        currentValue: parseFloat(amount),
+        initialSupplyAPY: pool.apy || 0,
+        currentSupplyAPY: pool.apy || 0,
+        initialBorrowAPY: null,
+        currentBorrowAPY: null,
+        netAPY: pool.apy || 0,
+        leverage: 1,
+        healthFactor: null,
+      });
+
+      // Succinct success message
+      const manageUrl = `https://app.gearbox.finance/pools/${pool.chain_id}/${pool.pool_address}`;
+      const shortTx = result.depositTxHash ? `${result.depositTxHash.slice(0, 10)}...${result.depositTxHash.slice(-8)}` : '';
+
+      await bot.sendMessage(chatId,
+        `✅ Deposited *${amount} ${pool.underlying_token}*\n\n` +
+        `${pool.pool_name} (${pool.apy?.toFixed(2) || '—'}% APY)\n` +
+        `Shares: ${result.shares || '—'}\n` +
+        (shortTx ? `Tx: ${shortTx}\n` : '') +
+        `\n[Manage Position](${manageUrl})`,
+        { parse_mode: 'Markdown', disable_web_page_preview: true }
+      );
+
+      sessions.delete(chatId);
+
+    } catch (error) {
+      console.error('❌ Transaction error:', error);
+      await bot.sendMessage(chatId, 'Transaction failed. Try /invest again.');
+    }
+  } catch (error) {
+    console.error('❌ Execute error:', error);
+    await bot.sendMessage(chatId, 'Execution error. Try /invest again.');
   }
 }
 
@@ -525,24 +625,19 @@ Choose how you want to connect:`;
 }
 
 /**
- * Show QR code for WalletConnect
+ * Show QR code with transaction recap (INSTANT, no confirmation screens)
  */
-async function showQRCode(bot, chatId, sessions) {
+async function showQRCodeWithRecap(bot, chatId, sessions, pool, amount) {
   try {
-    await bot.sendMessage(chatId, '⏳ Generating QR code...');
-
     const session = sessions.get(chatId);
-    if (!session || !session.selectedPool) {
-      throw new Error('No pool selected in session');
-    }
 
     // Create WalletConnect session for the pool's chain
     const user = await db.getOrCreateUser(chatId);
-    const { uri, approval } = await walletconnect.createSession(chatId, session.selectedPool.chain_id);
+    const { uri, approval } = await walletconnect.createSession(chatId, pool.chain_id);
 
     // Store approval promise in session
     sessions.set(chatId, {
-      ...sessions.get(chatId),
+      ...session,
       walletConnectApproval: approval,
     });
 
@@ -555,25 +650,42 @@ async function showQRCode(bot, chatId, sessions) {
       margin: 2,
     });
 
-    // Send QR code
+    const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma' };
+    const chainName = chainNames[pool.chain_id] || pool.chain_id;
+
+    // Send QR code with minimal recap
     await bot.sendPhoto(chatId, qrBuffer, {
-      caption: `📱 *Scan with Your Wallet*
+      caption: `Depositing *${amount} ${pool.underlying_token}*
+${pool.pool_name} • ${chainName} • ${pool.apy?.toFixed(2) || '—'}% APY
 
-Open your mobile wallet app:
-• MetaMask: Tap scan icon in top-right
-• Rabby: Open scanner from menu
-• Rainbow: Tap scan icon
-• Trust: Scan tab at bottom
-
-After scanning, approve the connection in your wallet.`,
+Scan with your wallet to confirm`,
       parse_mode: 'Markdown',
     });
 
-    // Wait for approval
-    await waitForWalletApproval(bot, chatId, sessions);
+    // Deep link buttons as fallback (under QR)
+    const metamaskLink = walletconnect.getDeepLink(uri, 'metamask');
+    const rabbyLink = walletconnect.getDeepLink(uri, 'rabby');
+    const rainbowLink = walletconnect.getDeepLink(uri, 'rainbow');
+
+    await bot.sendMessage(chatId, `On mobile? Tap to open:`, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🦊 MetaMask', url: metamaskLink },
+            { text: '🐰 Rabby', url: rabbyLink },
+            { text: '🌈 Rainbow', url: rainbowLink },
+          ],
+          [{ text: '❌ Cancel', callback_data: 'invest_cancel' }],
+        ],
+      },
+    });
+
+    // Silent execution after approval (no spam messages)
+    await waitForWalletApprovalSilent(bot, chatId, sessions);
+
   } catch (error) {
     console.error('❌ Error showing QR code:', error);
-    await bot.sendMessage(chatId, '❌ Failed to generate QR code. Please try again.');
+    await bot.sendMessage(chatId, '❌ Connection failed. Try /invest again.');
   }
 }
 
@@ -633,41 +745,34 @@ Choose your wallet app:`;
 }
 
 /**
- * Wait for wallet approval (shared by QR and deep link flows)
+ * Wait for wallet approval and execute transaction SILENTLY (no spam messages)
  */
-async function waitForWalletApproval(bot, chatId, sessions) {
+async function waitForWalletApprovalSilent(bot, chatId, sessions) {
   try {
-    await bot.sendMessage(chatId, '⏳ Waiting for wallet connection...');
-
     const session = sessions.get(chatId);
     if (!session || !session.walletConnectApproval) {
       throw new Error('No approval promise in session');
     }
 
     const timeout = setTimeout(() => {
-      bot.sendMessage(chatId, '⏱️ Connection timeout. Please try again.');
+      bot.sendMessage(chatId, 'Connection timeout. Try /invest again.');
     }, 120_000); // 2 minute timeout
 
     try {
       const sessionData = await session.walletConnectApproval;
       clearTimeout(timeout);
 
-      await bot.sendMessage(
-        chatId,
-        `✅ *Wallet Connected!*\n\nAddress: \`${sessionData.walletAddress}\`\n\nYou can now continue with your deposit.`,
-        { parse_mode: 'Markdown' }
-      );
+      // Execute transaction silently (no "preparing..." messages)
+      await executeDepositSilent(bot, chatId, sessions);
 
-      // Retry deposit
-      await executeDeposit(bot, chatId, sessions);
     } catch (error) {
       clearTimeout(timeout);
       console.error('❌ WalletConnect approval error:', error);
-      await bot.sendMessage(chatId, '❌ Failed to connect wallet. Please try again.');
+      await bot.sendMessage(chatId, 'Connection failed. Try /invest again.');
     }
   } catch (error) {
     console.error('❌ Error waiting for wallet approval:', error);
-    await bot.sendMessage(chatId, '❌ Connection error. Please try again.');
+    await bot.sendMessage(chatId, 'Connection error. Try /invest again.');
   }
 }
 
@@ -678,6 +783,6 @@ module.exports = {
   handleAmountSelection,
   handleCustomAmountInput,
   executeDeposit,
-  showQRCode,
-  showDeepLinks,
+  executeDepositSilent,
+  showQRCodeWithRecap,
 };

@@ -36,13 +36,12 @@ walletconnect.initializeWalletConnect()
 // Set bot command menu (appears when user types "/" in chat)
 bot.setMyCommands([
   { command: 'start', description: '🏠 Start the bot and view main menu' },
-  { command: 'invest', description: '💰 Deposit into yield pools' },
+  { command: 'lend', description: '💰 Lend tokens to earn yield' },
+  { command: 'positions', description: '💼 View your active positions' },
   { command: 'create', description: '➕ Create a new yield alert' },
   { command: 'alerts', description: '📋 View your active alerts' },
-  { command: 'positions', description: '💼 View your active positions' },
   { command: 'opportunities', description: '💎 Check current top yields' },
   { command: 'wallet', description: '💳 Connect or view your wallet' },
-  { command: 'stats', description: '📊 View your notification stats' },
   { command: 'help', description: '❓ Show help and instructions' }
 ]).then(() => {
   console.log('✅ Bot command menu configured');
@@ -805,38 +804,7 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
-    // Confirmation actions
-    if (data === 'invest_confirm' || data === 'invest_review_confirm') {
-      if (data === 'invest_review_confirm') {
-        // TWO_STEP: Show second confirmation
-        const session = sessions.get(chatId);
-        if (session && session.selectedPool && session.amount) {
-          const confirmation = require('./utils/confirmation');
-          const { message, keyboard } = confirmation.generateSecondConfirmation({
-            poolName: session.selectedPool.pool_name,
-            amount: session.amount,
-            tokenSymbol: session.selectedPool.underlying_token,
-          });
-          await bot.sendMessage(chatId, message, {
-            parse_mode: 'Markdown',
-            reply_markup: keyboard,
-          });
-        }
-        return;
-      } else {
-        // ONE_TAP or final confirmation: Execute transaction
-        await investCommands.executeDeposit(bot, chatId, sessions);
-        return;
-      }
-    }
-
-    if (data === 'invest_execute') {
-      // Final execute from TWO_STEP flow
-      await investCommands.executeDeposit(bot, chatId, sessions);
-      return;
-    }
-
-    // Navigation callbacks
+    // Navigation callbacks (removed confirmation callbacks - flow is now instant)
     if (data === 'invest_back_to_goals') {
       const message = `💰 *What's your investment goal?*\n\nChoose the strategy that matches your objectives:\n\n📈 *Maximize Growth* - Highest APY pools across all chains\n⚖️ *Balanced Returns* - Stable mid-tier pools\n🛡️ *Safety First* - Conservative, proven pools`;
       await bot.sendMessage(chatId, message, {
@@ -869,17 +837,7 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
-    // WalletConnect connection method selection
-    if (data === 'invest_connect_qr') {
-      await investCommands.showQRCode(bot, chatId, sessions);
-      return;
-    }
-
-    if (data === 'invest_connect_deeplink') {
-      await investCommands.showDeepLinks(bot, chatId, sessions);
-      return;
-    }
-
+    // Cancel invest flow
     if (data === 'invest_cancel') {
       sessions.delete(chatId);
       await bot.sendMessage(chatId, '❌ Investment cancelled.');
@@ -1480,8 +1438,12 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
 // });
 
 // ==========================================
-// COMMAND: /invest
+// COMMAND: /lend (primary) and /invest (alias)
 // ==========================================
+
+bot.onText(/\/lend/, async (msg) => {
+  await investCommands.handleInvestCommand(bot, msg);
+});
 
 bot.onText(/\/invest/, async (msg) => {
   await investCommands.handleInvestCommand(bot, msg);
@@ -1520,24 +1482,18 @@ bot.onText(/\/help/, async (msg) => {
 
   await bot.sendMessage(
     chatId,
-    `🤖 *Gearbox Sigma Bot - Help*\n\n` +
+    `🤖 *Gearbox Sigma Bot*\n\n` +
     `*Commands:*\n` +
-    `/start - Start the bot\n` +
-    `/invest - 💰 Deposit into yield pools (NEW!)\n` +
-    `/create - Create new yield alert\n` +
-    `/alerts - View your active alerts\n` +
-    `/positions - View your active positions\n` +
-    `/opportunities - Check current top yields\n` +
-    `/wallet [address] - Connect/view wallet\n` +
-    `/help - Show this help message\n\n` +
-    `*How it works:*\n` +
-    `1. Use /invest to deposit directly into pools\n` +
-    `2. Or create an alert to monitor yields\n` +
-    `3. Bot monitors Gearbox every 15 minutes\n` +
-    `4. Get alerts when yields match your criteria\n` +
-    `5. Connect your wallet to track positions\n` +
-    `6. Get alerts for APY changes\n\n` +
-    `_Bot runs 24/7 on server - no need to keep anything open!_`,
+    `/lend - Lend tokens to earn yield\n` +
+    `/positions - View your lending positions\n` +
+    `/create - Create yield alert\n` +
+    `/alerts - View alerts\n` +
+    `/opportunities - Check top yields\n` +
+    `/wallet [address] - Connect wallet\n\n` +
+    `*Quick Start:*\n` +
+    `1. /lend → Choose pool → Enter amount → Scan QR\n` +
+    `2. Or set alerts to monitor yields automatically\n\n` +
+    `Runs 24/7 - no need to keep anything open`,
     { parse_mode: 'Markdown' }
   );
 });
