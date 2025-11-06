@@ -867,6 +867,8 @@ class Database {
         pool_name,
         pool_symbol,
         underlying_token,
+        underlying_token_address = null,
+        underlying_decimals = 18,
         tvl,
         apy,
         borrowed = 0,
@@ -889,11 +891,12 @@ class Database {
             this.db.run(
               `UPDATE pool_cache
                SET pool_name = ?, pool_symbol = ?, underlying_token = ?,
+                   underlying_token_address = ?, underlying_decimals = ?,
                    last_tvl = tvl, last_apy = apy,
                    tvl = ?, apy = ?, borrowed = ?, utilization = ?, collaterals = ?,
                    last_seen = CURRENT_TIMESTAMP, active = 1
                WHERE pool_address = ? AND chain_id = ?`,
-              [pool_name, pool_symbol, underlying_token, tvl, apy, borrowed, utilization, collateralsStr, pool_address, chain_id],
+              [pool_name, pool_symbol, underlying_token, underlying_token_address, underlying_decimals, tvl, apy, borrowed, utilization, collateralsStr, pool_address, chain_id],
               (err) => {
                 if (err) return reject(err);
                 resolve({
@@ -909,9 +912,9 @@ class Database {
             // Insert new pool
             this.db.run(
               `INSERT INTO pool_cache
-               (pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, last_tvl, last_apy, borrowed, utilization, collaterals)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [pool_address, chain_id, pool_name, pool_symbol, underlying_token, tvl, apy, tvl, apy, borrowed, utilization, collateralsStr],
+               (pool_address, chain_id, pool_name, pool_symbol, underlying_token, underlying_token_address, underlying_decimals, tvl, apy, last_tvl, last_apy, borrowed, utilization, collaterals)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [pool_address, chain_id, pool_name, pool_symbol, underlying_token, underlying_token_address, underlying_decimals, tvl, apy, tvl, apy, borrowed, utilization, collateralsStr],
               function(err) {
                 if (err) return reject(err);
                 resolve({

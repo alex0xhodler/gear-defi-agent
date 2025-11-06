@@ -218,12 +218,13 @@ async function getPoolsFromSDK(chainKey, chainConfig) {
         chainId: chainConfig.id,
         chainKey,
         underlyingToken,
+        tokenAddress: poolData.underlying, // Underlying token contract address
         decimals,
         tvl,
         apy,
         borrowed,
         utilization,
-        asset: poolData.underlying,
+        asset: poolData.underlying, // Keep for backward compatibility
         chainName: chainConfig.name,
         collaterals: collaterals.length > 0 ? collaterals : null,
       });
@@ -392,10 +393,11 @@ async function getEthereumPoolsFallback(chainKey, chainConfig) {
           chainId: chainConfig.id,
           chainKey,
           underlyingToken,
+          tokenAddress: asset, // Underlying token contract address
           decimals,
           tvl,
           apy,
-          asset,
+          asset, // Keep for backward compatibility
           chainName: chainConfig.name,
         });
 
@@ -524,13 +526,14 @@ async function getPlasmaPoolDetails(poolAddress, chainId, chainKey, poolName) {
       chainId,
       chainKey,
       underlyingToken,
+      tokenAddress: asset, // Underlying token contract address
       decimals,
       tvl,
       apy,
       borrowed,
       available,
       utilization,
-      asset,
+      asset, // Keep for backward compatibility
       chainName: 'Plasma',
       collaterals,
     };

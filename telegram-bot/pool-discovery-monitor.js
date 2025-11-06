@@ -95,6 +95,8 @@ async function scanPools(bot) {
         pool_name: pool.name,
         pool_symbol: pool.symbol,
         underlying_token: pool.underlyingToken,
+        underlying_token_address: pool.tokenAddress || pool.asset, // Use tokenAddress if available
+        underlying_decimals: pool.decimals || 18,
         tvl: pool.tvl,
         apy: pool.apy,
         borrowed: pool.borrowed || 0,
