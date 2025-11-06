@@ -266,17 +266,18 @@ bot.on('callback_query', async (query) => {
       // Trigger /positions command via positions handler
       await positionCommands.handlePositionsCommand(bot, { chat: { id: chatId } });
       return;
-    } else if (data === 'menu_stats') {
-      const user = await db.getOrCreateUser(chatId);
-      const stats = await db.getNotificationStats(user.id);
-      await bot.sendMessage(
-        chatId,
-        `📊 *Your Stats*\n\n` +
-        `🔔 Total alerts: ${stats.total_notifications || 0}\n` +
-        `📈 Average APY: ${stats.avg_apy ? stats.avg_apy.toFixed(2) + '%' : 'N/A'}\n` +
-        `⏰ Last alert: ${stats.last_notification || 'Never'}`,
-        { parse_mode: 'Markdown' }
-      );
+    // DISABLED: Stats not populating with real numbers
+    // } else if (data === 'menu_stats') {
+    //   const user = await db.getOrCreateUser(chatId);
+    //   const stats = await db.getNotificationStats(user.id);
+    //   await bot.sendMessage(
+    //     chatId,
+    //     `📊 *Your Stats*\n\n` +
+    //     `🔔 Total alerts: ${stats.total_notifications || 0}\n` +
+    //     `📈 Average APY: ${stats.avg_apy ? stats.avg_apy.toFixed(2) + '%' : 'N/A'}\n` +
+    //     `⏰ Last alert: ${stats.last_notification || 'Never'}`,
+    //     { parse_mode: 'Markdown' }
+    //   );
       await showMainMenu(chatId);
       return;
     } else if (data === 'menu_wallet') {
@@ -1311,29 +1312,29 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
 });
 
 // ==========================================
-// COMMAND: /stats (Notification stats)
+// COMMAND: /stats (Notification stats) - DISABLED (not populating with real numbers)
 // ==========================================
 
-bot.onText(/\/stats/, async (msg) => {
-  const chatId = msg.chat.id;
+// bot.onText(/\/stats/, async (msg) => {
+//   const chatId = msg.chat.id;
 
-  try {
-    const user = await db.getOrCreateUser(chatId);
-    const stats = await db.getNotificationStats(user.id);
+//   try {
+//     const user = await db.getOrCreateUser(chatId);
+//     const stats = await db.getNotificationStats(user.id);
 
-    await bot.sendMessage(
-      chatId,
-      `📊 *Your Stats*\n\n` +
-      `🔔 Total alerts: ${stats.total_notifications || 0}\n` +
-      `📈 Average APY: ${stats.avg_apy ? stats.avg_apy.toFixed(2) + '%' : 'N/A'}\n` +
-      `⏰ Last alert: ${stats.last_notification || 'Never'}`,
-      { parse_mode: 'Markdown' }
-    );
-  } catch (error) {
-    console.error('Error in /stats:', error);
-    await bot.sendMessage(chatId, '❌ Error fetching stats.');
-  }
-});
+//     await bot.sendMessage(
+//       chatId,
+//       `📊 *Your Stats*\n\n` +
+//       `🔔 Total alerts: ${stats.total_notifications || 0}\n` +
+//       `📈 Average APY: ${stats.avg_apy ? stats.avg_apy.toFixed(2) + '%' : 'N/A'}\n` +
+//       `⏰ Last alert: ${stats.last_notification || 'Never'}`,
+//       { parse_mode: 'Markdown' }
+//     );
+//   } catch (error) {
+//     console.error('Error in /stats:', error);
+//     await bot.sendMessage(chatId, '❌ Error fetching stats.');
+//   }
+// });
 
 // ==========================================
 // COMMAND: /positions
@@ -1434,8 +1435,9 @@ function showMainMenu(chatId, message = '📋 *Main Menu*') {
             { text: '💎 Opportunities', callback_data: 'menu_opportunities' }
           ],
           [
-            { text: '💳 Wallet', callback_data: 'menu_wallet' },
-            { text: '📊 Stats', callback_data: 'menu_stats' }
+            { text: '💳 Wallet', callback_data: 'menu_wallet' }
+            // DISABLED: Stats not populating with real numbers
+            // { text: '📊 Stats', callback_data: 'menu_stats' }
           ],
           [
             { text: '❓ Help', callback_data: 'menu_help' }
