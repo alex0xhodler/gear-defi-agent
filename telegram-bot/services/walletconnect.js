@@ -155,10 +155,11 @@ async function createSession(chatId, chainId = 1) {
     console.log(`✅ Connection URI generated for chat ${chatId}`);
 
     // Return URI immediately (for QR code generation)
-    // The approval promise will resolve when user connects wallet
+    // The approval() function returns a promise that resolves when user connects wallet
     return {
       uri,
-      approval: approval.then(async (session) => {
+      approval: (async () => {
+        const session = await approval();
         console.log(`✅ Session approved for chat ${chatId}:`, session.topic);
 
         // Extract wallet address from session
@@ -196,7 +197,7 @@ async function createSession(chatId, chainId = 1) {
           walletAddress,
           chainId,
         };
-      }),
+      })(),
     };
   } catch (error) {
     console.error('❌ Error creating WalletConnect session:', error);
