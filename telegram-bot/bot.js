@@ -11,7 +11,7 @@ const { scanWalletPositions } = require('./position-scanner');
 const positionCommands = require('./commands/positions');
 const mandateCommands = require('./commands/mandates');
 const alertCommands = require('./commands/alerts');
-const { analyzeWalletHoldings } = require('./utils/wallet-analyzer');
+const { analyzeWalletHoldings } = require('./utils/wallet-analyzer-v2');
 const { getOpportunityPreviews } = require('./utils/opportunity-preview');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -783,7 +783,7 @@ bot.on('message', async (msg) => {
       await bot.sendMessage(
         chatId,
         `🔍 *Analyzing ${walletAddress.slice(0, 10)}...${walletAddress.slice(-8)}*\n\n` +
-        `Checking balances across Ethereum and Plasma...`,
+        `Checking balances across 5 chains...`,
         { parse_mode: 'Markdown' }
       );
 
@@ -1132,7 +1132,7 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
     await bot.sendMessage(
       chatId,
       `🔍 *Analyzing ${walletAddress.slice(0, 10)}...${walletAddress.slice(-8)}*\n\n` +
-      `Checking balances across Ethereum and Plasma...`,
+      `Checking balances across 5 chains...`,
       { parse_mode: 'Markdown' }
     );
 
