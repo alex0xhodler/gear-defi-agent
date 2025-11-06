@@ -391,18 +391,21 @@ async function executeDeposit(bot, chatId, sessions) {
       // Success! Save position to database immediately
       const user = await db.getOrCreateUser(chatId);
 
-      // Create or update position in database
+      // Create or update position in database (using camelCase for database.js)
       const positionData = {
-        pool_address: pool.pool_address,
-        chain_id: pool.chain_id,
-        underlying_token: tokenAddress,
+        poolAddress: pool.pool_address,
+        chainId: pool.chain_id,
+        underlyingToken: tokenAddress,
         shares: parseFloat(result.shares || '0'),
-        deposited_amount: parseFloat(amount),
-        current_value: parseFloat(amount), // Initial value = deposited amount
-        initial_supply_apy: pool.apy || 0,
-        current_supply_apy: pool.apy || 0,
+        depositedAmount: parseFloat(amount),
+        currentValue: parseFloat(amount), // Initial value = deposited amount
+        initialSupplyAPY: pool.apy || 0,
+        currentSupplyAPY: pool.apy || 0,
+        initialBorrowAPY: null,
+        currentBorrowAPY: null,
+        netAPY: pool.apy || 0,
         leverage: 1, // Lending pools have no leverage
-        health_factor: null,
+        healthFactor: null,
       };
 
       await db.createOrUpdatePosition(user.id, positionData);
