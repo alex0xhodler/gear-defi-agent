@@ -3,6 +3,11 @@
  * Handles wallet connection sessions and transaction signing
  */
 
+// Polyfill Web Crypto API for Node.js (required by WalletConnect)
+const { Crypto } = require('@peculiar/webcrypto');
+const crypto = new Crypto();
+global.crypto = crypto;
+
 const { SignClient } = require('@walletconnect/sign-client');
 const { getSdkError } = require('@walletconnect/utils');
 const db = require('../database');
