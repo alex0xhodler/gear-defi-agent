@@ -142,6 +142,38 @@ class Database {
         )
       `);
 
+      // WalletConnect sessions table (for transaction signing)
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS walletconnect_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          topic TEXT UNIQUE NOT NULL,
+          wallet_address TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+      `);
+
+      // Pending transactions table (for monitoring)
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS pending_transactions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          tx_hash TEXT UNIQUE NOT NULL,
+          tx_type TEXT NOT NULL,
+          chain_id INTEGER NOT NULL,
+          pool_address TEXT,
+          token_address TEXT,
+          amount TEXT,
+          status TEXT DEFAULT 'pending',
+          created_at INTEGER NOT NULL,
+          confirmed_at INTEGER,
+          error TEXT,
+          FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+      `);
+
       // Index for faster lookups
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_mandates_active ON mandates(active, signed)`);
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recent ON notifications(mandate_id, sent_at)`);
@@ -150,7 +182,9 @@ class Database {
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_positions_health_factor ON positions(health_factor)`);
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_apy_history_pool ON apy_history(pool_address, recorded_at)`);
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_apy_notifications_recent ON apy_notifications(position_id, sent_at)`);
-      this.db.run(`CREATE INDEX IF NOT EXISTS idx_health_notifications_recent ON health_factor_notifications(position_id, sent_at)`, (err) => {
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_health_notifications_recent ON health_factor_notifications(position_id, sent_at)`);
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_walletconnect_sessions_user ON walletconnect_sessions(user_id, expires_at)`);
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_pending_transactions_status ON pending_transactions(status, created_at)`, (err) => {
         if (err) {
           console.error('❌ Error creating indexes:', err.message);
         } else {

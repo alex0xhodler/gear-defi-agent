@@ -11,6 +11,8 @@ const { scanWalletPositions } = require('./position-scanner');
 const positionCommands = require('./commands/positions');
 const mandateCommands = require('./commands/mandates');
 const alertCommands = require('./commands/alerts');
+const investCommands = require('./commands/invest');
+const walletconnect = require('./services/walletconnect');
 const { analyzeWalletHoldings } = require('./utils/wallet-analyzer-v2');
 const { getOpportunityPreviews } = require('./utils/opportunity-preview');
 
@@ -21,9 +23,20 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 console.log('🤖 Gearbox Sigma Bot starting...');
 
+// Initialize WalletConnect
+walletconnect.initializeWalletConnect()
+  .then(() => {
+    console.log('✅ WalletConnect initialized');
+  })
+  .catch((err) => {
+    console.error('⚠️  WalletConnect initialization failed:', err.message);
+    console.error('   Transactions will not be available. Set WALLETCONNECT_PROJECT_ID in .env');
+  });
+
 // Set bot command menu (appears when user types "/" in chat)
 bot.setMyCommands([
   { command: 'start', description: '🏠 Start the bot and view main menu' },
+  { command: 'invest', description: '💰 Deposit into yield pools' },
   { command: 'create', description: '➕ Create a new yield alert' },
   { command: 'alerts', description: '📋 View your active alerts' },
   { command: 'positions', description: '💼 View your active positions' },
@@ -750,6 +763,118 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
+    // ==========================================
+    // INVEST FLOW CALLBACKS
+    // ==========================================
+
+    // Goal selection
+    if (data.startsWith('invest_goal_')) {
+      const goal = data.replace('invest_goal_', '');
+      await investCommands.handleGoalSelection(bot, chatId, goal, sessions);
+      return;
+    }
+
+    // Pool selection
+    if (data.startsWith('invest_pool_')) {
+      const poolIndex = parseInt(data.replace('invest_pool_', ''));
+      await investCommands.handlePoolSelection(bot, chatId, poolIndex, sessions);
+      return;
+    }
+
+    // Amount selection (quick select buttons)
+    if (data.startsWith('invest_amount_')) {
+      if (data === 'invest_amount_custom') {
+        // Prompt for custom amount
+        const session = sessions.get(chatId);
+        if (session && session.selectedPool) {
+          sessions.set(chatId, {
+            ...session,
+            step: 'awaiting_custom_amount',
+          });
+          await bot.sendMessage(
+            chatId,
+            `✍️ *Enter Custom Amount*\n\nType the amount of ${session.selectedPool.underlying_token} you want to deposit:`,
+            { parse_mode: 'Markdown' }
+          );
+        }
+        return;
+      }
+
+      const amount = data.replace('invest_amount_', '');
+      await investCommands.handleAmountSelection(bot, chatId, amount, sessions);
+      return;
+    }
+
+    // Confirmation actions
+    if (data === 'invest_confirm' || data === 'invest_review_confirm') {
+      if (data === 'invest_review_confirm') {
+        // TWO_STEP: Show second confirmation
+        const session = sessions.get(chatId);
+        if (session && session.selectedPool && session.amount) {
+          const confirmation = require('./utils/confirmation');
+          const { message, keyboard } = confirmation.generateSecondConfirmation({
+            poolName: session.selectedPool.pool_name,
+            amount: session.amount,
+            tokenSymbol: session.selectedPool.underlying_token,
+          });
+          await bot.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: keyboard,
+          });
+        }
+        return;
+      } else {
+        // ONE_TAP or final confirmation: Execute transaction
+        await investCommands.executeDeposit(bot, chatId, sessions);
+        return;
+      }
+    }
+
+    if (data === 'invest_execute') {
+      // Final execute from TWO_STEP flow
+      await investCommands.executeDeposit(bot, chatId, sessions);
+      return;
+    }
+
+    // Navigation callbacks
+    if (data === 'invest_back_to_goals') {
+      const message = `💰 *What's your investment goal?*\n\nChoose the strategy that matches your objectives:\n\n📈 *Maximize Growth* - Highest APY pools across all chains\n⚖️ *Balanced Returns* - Stable mid-tier pools\n🛡️ *Safety First* - Conservative, proven pools`;
+      await bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '📈 Maximize Growth', callback_data: 'invest_goal_maximize' }],
+            [{ text: '⚖️ Balanced Returns', callback_data: 'invest_goal_balanced' }],
+            [{ text: '🛡️ Safety First', callback_data: 'invest_goal_safety' }],
+          ],
+        },
+      });
+      return;
+    }
+
+    if (data === 'invest_back_to_pools') {
+      const session = sessions.get(chatId);
+      if (session && session.goal) {
+        await investCommands.handleGoalSelection(bot, chatId, session.goal, sessions);
+      }
+      return;
+    }
+
+    if (data === 'invest_back_to_amount') {
+      const session = sessions.get(chatId);
+      if (session && session.selectedPool) {
+        const poolIndex = session.availablePools?.indexOf(session.selectedPool) || 0;
+        await investCommands.handlePoolSelection(bot, chatId, poolIndex, sessions);
+      }
+      return;
+    }
+
+    if (data === 'invest_cancel') {
+      sessions.delete(chatId);
+      await bot.sendMessage(chatId, '❌ Investment cancelled.');
+      return;
+    }
+
   } catch (error) {
     console.error('Error in callback_query:', error);
     await bot.sendMessage(chatId, '❌ Error processing request. Please try again.');
@@ -766,6 +891,13 @@ bot.on('message', async (msg) => {
 
   // Ignore commands
   if (text.startsWith('/')) return;
+
+  // INVEST FLOW: Handle custom amount input
+  const session = sessions.get(chatId);
+  if (session && session.step === 'awaiting_custom_amount') {
+    await investCommands.handleCustomAmountInput(bot, chatId, text, sessions);
+    return;
+  }
 
   // AUTO-DETECT WALLET ADDRESS: If user pastes an Ethereum address, process it automatically
   const walletAddressRegex = /^(0x[a-fA-F0-9]{40})$/;
@@ -1337,6 +1469,14 @@ bot.onText(/\/wallet(?:\s+(.+))?/, async (msg, match) => {
 // });
 
 // ==========================================
+// COMMAND: /invest
+// ==========================================
+
+bot.onText(/\/invest/, async (msg) => {
+  await investCommands.handleInvestCommand(bot, msg);
+});
+
+// ==========================================
 // COMMAND: /positions
 // ==========================================
 
@@ -1372,19 +1512,20 @@ bot.onText(/\/help/, async (msg) => {
     `🤖 *Gearbox Sigma Bot - Help*\n\n` +
     `*Commands:*\n` +
     `/start - Start the bot\n` +
+    `/invest - 💰 Deposit into yield pools (NEW!)\n` +
     `/create - Create new yield alert\n` +
-    `/list - View your active alerts\n` +
+    `/alerts - View your active alerts\n` +
     `/positions - View your active positions\n` +
     `/opportunities - Check current top yields\n` +
     `/wallet [address] - Connect/view wallet\n` +
-    `/stats - View notification stats\n` +
     `/help - Show this help message\n\n` +
     `*How it works:*\n` +
-    `1. Create an alert with your criteria\n` +
-    `2. Bot monitors Gearbox every 15 minutes\n` +
-    `3. Get alerts when yields match your criteria\n` +
-    `4. Connect your wallet to track positions\n` +
-    `5. Get alerts for APY changes\n\n` +
+    `1. Use /invest to deposit directly into pools\n` +
+    `2. Or create an alert to monitor yields\n` +
+    `3. Bot monitors Gearbox every 15 minutes\n` +
+    `4. Get alerts when yields match your criteria\n` +
+    `5. Connect your wallet to track positions\n` +
+    `6. Get alerts for APY changes\n\n` +
     `_Bot runs 24/7 on server - no need to keep anything open!_`,
     { parse_mode: 'Markdown' }
   );
