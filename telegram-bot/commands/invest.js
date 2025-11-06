@@ -388,7 +388,31 @@ async function executeDeposit(bot, chatId, sessions) {
         return;
       }
 
-      // Success!
+      // Success! Save position to database immediately
+      const user = await db.getOrCreateUser(chatId);
+
+      // Create or update position in database
+      const positionData = {
+        pool_address: pool.pool_address,
+        chain_id: pool.chain_id,
+        underlying_token: tokenAddress,
+        shares: parseFloat(result.shares || '0'),
+        deposited_amount: parseFloat(amount),
+        current_value: parseFloat(amount), // Initial value = deposited amount
+        initial_supply_apy: pool.apy || 0,
+        current_supply_apy: pool.apy || 0,
+        leverage: 1, // Lending pools have no leverage
+        health_factor: null,
+      };
+
+      await db.createOrUpdatePosition(user.id, positionData);
+      console.log(`✅ Position saved to database for user ${user.id}`);
+
+      // Build success message with link to manage position
+      const chainNames = { 1: 'ethereum', 42161: 'arbitrum', 10: 'optimism', 146: 'sonic', 9745: 'plasma' };
+      const chainSlug = chainNames[pool.chain_id] || pool.chain_id;
+      const manageUrl = `https://app.gearbox.finance/pools/${chainSlug}/${pool.pool_address}`;
+
       let successMessage = `✅ *Deposit Successful!*\n\n`;
       successMessage += `Deposited: ${amount} ${pool.underlying_token}\n`;
       successMessage += `Pool: ${pool.pool_name}\n`;
@@ -398,9 +422,13 @@ async function executeDeposit(bot, chatId, sessions) {
       if (result.depositTxHash) {
         successMessage += `\nTransaction: \`${result.depositTxHash}\`\n`;
       }
-      successMessage += `\nYour position is now active and earning yield! 🎉`;
+      successMessage += `\nYour position is now active and earning yield! 🎉\n\n`;
+      successMessage += `[Manage Position on Gearbox](${manageUrl})`;
 
-      await bot.sendMessage(chatId, successMessage, { parse_mode: 'Markdown' });
+      await bot.sendMessage(chatId, successMessage, {
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      });
 
       // Clear session
       sessions.delete(chatId);

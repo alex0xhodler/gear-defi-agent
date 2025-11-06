@@ -32,7 +32,20 @@ async function handlePositionsCommand(bot, msg) {
       return;
     }
 
-    // Get user's positions
+    // Fetch fresh positions from blockchain
+    await bot.sendMessage(chatId, '🔍 Fetching latest positions from blockchain...');
+
+    const { scanWalletPositions } = require('../position-scanner');
+    const freshPositions = await scanWalletPositions(user.wallet_address);
+
+    // Update database with fresh positions
+    for (const pos of freshPositions) {
+      await db.createOrUpdatePosition(user.id, pos);
+    }
+
+    console.log(`✅ Refreshed ${freshPositions.length} positions from blockchain for user ${user.id}`);
+
+    // Get updated positions from database
     const positions = await db.getUserPositions(user.id);
 
     if (positions.length === 0) {
@@ -61,7 +74,8 @@ async function handlePositionsCommand(bot, msg) {
     message += `───────────────────\n\n`;
 
     positions.forEach((pos, index) => {
-      const chainName = pos.chain_id === 1 ? 'Ethereum' : 'Plasma';
+      const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma' };
+      const chainName = chainNames[pos.chain_id] || `Chain ${pos.chain_id}`;
       const pnl = (pos.current_value || 0) - (pos.deposited_amount || 0);
       const pnlPercent = (pnl / pos.deposited_amount) * 100;
 
@@ -78,7 +92,12 @@ async function handlePositionsCommand(bot, msg) {
 
       message += `\n`;
       message += `   Value: ${pos.current_value?.toFixed(2) || 'N/A'} ${pos.underlying_token}`;
-      message += ` | PnL: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%)\n\n`;
+      message += ` | PnL: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%)\n`;
+
+      // Add manage link for each position
+      const chainSlugs = { 1: 'ethereum', 42161: 'arbitrum', 10: 'optimism', 146: 'sonic', 9745: 'plasma' };
+      const chainSlug = chainSlugs[pos.chain_id] || pos.chain_id;
+      message += `   [Manage on Gearbox](https://app.gearbox.finance/pools/${chainSlug}/${pos.pool_address})\n\n`;
     });
 
     // Add inline keyboard for actions
