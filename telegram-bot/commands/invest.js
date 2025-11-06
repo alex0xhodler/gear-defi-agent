@@ -294,11 +294,31 @@ async function executeDeposit(bot, chatId, sessions) {
     await bot.sendMessage(chatId, '⏳ Preparing transaction...');
 
     try {
+      // Get the actual underlying token address from the pool contract
+      const { getClient } = require('../utils/blockchain');
+      const client = getClient(pool.chain_id);
+
+      const tokenAddress = await client.readContract({
+        address: pool.pool_address,
+        abi: [
+          {
+            name: 'asset',
+            type: 'function',
+            stateMutability: 'view',
+            inputs: [],
+            outputs: [{ type: 'address' }],
+          },
+        ],
+        functionName: 'asset',
+      });
+
+      console.log(`✅ Fetched token address from pool: ${tokenAddress}`);
+
       // Execute deposit via transaction service
       const result = await transactionService.executeDeposit({
         chatId,
         poolAddress: pool.pool_address,
-        tokenAddress: pool.underlying_token, // Assuming underlying_token is the token address
+        tokenAddress: tokenAddress, // Use actual token address, not symbol
         amount: amount,
         chainId: pool.chain_id,
         referralCode: 0,
