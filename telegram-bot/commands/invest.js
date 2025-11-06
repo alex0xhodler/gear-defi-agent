@@ -412,9 +412,7 @@ async function executeDeposit(bot, chatId, sessions) {
       console.log(`✅ Position saved to database for user ${user.id}`);
 
       // Build success message with link to manage position
-      const chainNames = { 1: 'ethereum', 42161: 'arbitrum', 10: 'optimism', 146: 'sonic', 9745: 'plasma' };
-      const chainSlug = chainNames[pool.chain_id] || pool.chain_id;
-      const manageUrl = `https://app.gearbox.finance/pools/${chainSlug}/${pool.pool_address}`;
+      const manageUrl = `https://app.gearbox.finance/pools/${pool.chain_id}/${pool.pool_address}`;
 
       let successMessage = `✅ *Deposit Successful!*\n\n`;
       successMessage += `Deposited: ${amount} ${pool.underlying_token}\n`;

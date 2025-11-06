@@ -94,10 +94,8 @@ async function handlePositionsCommand(bot, msg) {
       message += `   Value: ${pos.current_value?.toFixed(2) || 'N/A'} ${pos.underlying_token}`;
       message += ` | PnL: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%)\n`;
 
-      // Add manage link for each position
-      const chainSlugs = { 1: 'ethereum', 42161: 'arbitrum', 10: 'optimism', 146: 'sonic', 9745: 'plasma' };
-      const chainSlug = chainSlugs[pos.chain_id] || pos.chain_id;
-      message += `   [Manage on Gearbox](https://app.gearbox.finance/pools/${chainSlug}/${pos.pool_address})\n\n`;
+      // Add manage link for each position (using chain ID number)
+      message += `   [Manage on Gearbox](https://app.gearbox.finance/pools/${pos.chain_id}/${pos.pool_address})\n\n`;
     });
 
     // Add inline keyboard for actions
