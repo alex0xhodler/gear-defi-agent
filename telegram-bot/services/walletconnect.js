@@ -375,17 +375,25 @@ async function hasActiveSession(chatId) {
  * @param {string} uri - WalletConnect URI
  * @param {string} walletApp - Wallet app name (metamask, rainbow, trust, etc.)
  * @returns {string} Deep link URL
+ *
+ * Note: Using direct app schemes (e.g., metamask://, trust://) instead of universal links
+ * to ensure iOS opens the installed app directly rather than redirecting to App Store.
+ * If the app is not installed, the user will see a "Cannot open page" error.
  */
 function getDeepLink(uri, walletApp = 'metamask') {
   const encodedUri = encodeURIComponent(uri);
 
   const deepLinks = {
-    metamask: `https://metamask.app.link/wc?uri=${encodedUri}`,
+    // Direct app schemes for reliable iOS deeplinks (opens installed app immediately)
+    metamask: `metamask://wc?uri=${encodedUri}`,
+    trust: `trust://wc?uri=${encodedUri}`,
+
+    // Universal links for wallets without direct schemes
     rainbow: `https://rnbwapp.com/wc?uri=${encodedUri}`,
-    trust: `https://link.trustwallet.com/wc?uri=${encodedUri}`,
     rabby: `https://rabby.io/wc?uri=${encodedUri}`,
     argent: `https://argent.link/app/wc?uri=${encodedUri}`,
     imtoken: `https://imtoken.me/wc?uri=${encodedUri}`,
+
     // Generic WalletConnect modal for any wallet
     walletconnect: `https://web3modal.com/wc?uri=${encodedUri}`,
   };
