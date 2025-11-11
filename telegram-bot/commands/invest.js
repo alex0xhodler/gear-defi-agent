@@ -662,23 +662,40 @@ Scan with your wallet to confirm`,
       parse_mode: 'Markdown',
     });
 
-    // Deep link buttons as fallback (under QR)
-    const metamaskLink = walletconnect.getDeepLink(uri, 'metamask');
-    const rabbyLink = walletconnect.getDeepLink(uri, 'rabby');
-    const rainbowLink = walletconnect.getDeepLink(uri, 'rainbow');
+    // Deep link buttons with expanded wallet support (2025 best practices)
+    const walletLinks = walletconnect.getAllWalletDeepLinks(uri);
 
-    await bot.sendMessage(chatId, `On mobile? Tap to open:`, {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: '🦊 MetaMask', url: metamaskLink },
-            { text: '🐰 Rabby', url: rabbyLink },
-            { text: '🌈 Rainbow', url: rainbowLink },
+    await bot.sendMessage(
+      chatId,
+      `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `📱 *On mobile? Open your wallet:*\n\n` +
+      `Tap your wallet below to connect instantly`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🦊 MetaMask', url: walletLinks.metamask },
+              { text: '🌈 Rainbow', url: walletLinks.rainbow },
+            ],
+            [
+              { text: '💼 Trust', url: walletLinks.trust },
+              { text: '🔵 Coinbase', url: walletLinks.coinbase },
+            ],
+            [
+              { text: '🐰 Rabby', url: walletLinks.rabby },
+              { text: '🦄 Zerion', url: walletLinks.zerion },
+            ],
+            [
+              { text: '🔗 Other Wallets', url: walletLinks.walletconnect },
+            ],
+            [
+              { text: '❌ Cancel', callback_data: 'invest_cancel' },
+            ],
           ],
-          [{ text: '❌ Cancel', callback_data: 'invest_cancel' }],
-        ],
-      },
-    });
+        },
+      }
+    );
 
     // Silent execution after approval (no spam messages)
     await waitForWalletApprovalSilent(bot, chatId, sessions);
@@ -745,22 +762,48 @@ Choose your wallet app:`;
 }
 
 /**
- * Wait for wallet approval and execute transaction SILENTLY (no spam messages)
+ * Wait for wallet approval and execute transaction with improved UX (2025 best practices)
+ * - Shows real-time connection status
+ * - Provides specific error messages with troubleshooting steps
+ * - Reduced timeout for faster feedback
  */
 async function waitForWalletApprovalSilent(bot, chatId, sessions) {
+  let statusMsg = null;
+
   try {
     const session = sessions.get(chatId);
     if (!session || !session.walletConnectApproval) {
       throw new Error('No approval promise in session');
     }
 
-    const timeout = setTimeout(() => {
-      bot.sendMessage(chatId, 'Connection timeout. Try /invest again.');
-    }, 120_000); // 2 minute timeout
+    // Show "waiting" status
+    statusMsg = await bot.sendMessage(chatId, '⏳ *Waiting for wallet approval...*\n\nOpen your wallet app and approve the connection.', {
+      parse_mode: 'Markdown',
+    });
+
+    const timeout = setTimeout(async () => {
+      await bot.editMessageText(
+        '⚠️ *Connection Timeout*\n\n' +
+        'Didn\'t receive approval from your wallet.\n\n' +
+        '💡 *What to try:*\n' +
+        '• Make sure you approved the connection in your wallet\n' +
+        '• Check your wallet app is updated\n' +
+        '• Try /invest again and scan the QR code instead\n\n' +
+        'Use /invest to restart.',
+        {
+          chat_id: chatId,
+          message_id: statusMsg.message_id,
+          parse_mode: 'Markdown',
+        }
+      );
+    }, 90_000); // Reduced from 120s to 90s for faster feedback
 
     try {
       const sessionData = await session.walletConnectApproval;
       clearTimeout(timeout);
+
+      // Delete "waiting" message on success (clean UX)
+      await bot.deleteMessage(chatId, statusMsg.message_id).catch(() => {});
 
       // Execute transaction silently (no "preparing..." messages)
       await executeDepositSilent(bot, chatId, sessions);
@@ -768,11 +811,55 @@ async function waitForWalletApprovalSilent(bot, chatId, sessions) {
     } catch (error) {
       clearTimeout(timeout);
       console.error('❌ WalletConnect approval error:', error);
-      await bot.sendMessage(chatId, 'Connection failed. Try /invest again.');
+
+      // Parse error type for specific user-friendly messaging
+      let errorMessage = '❌ *Connection Failed*\n\n';
+
+      if (error.message?.includes('User rejected') || error.message?.includes('rejected')) {
+        errorMessage += 'You rejected the connection request.\n\n';
+        errorMessage += '💡 Use /invest to try again.';
+      } else if (error.message?.includes('Proposal expired')) {
+        errorMessage += 'Connection request expired.\n\n';
+        errorMessage += '💡 Try /invest again and approve faster.';
+      } else if (error.message?.includes('No matching key') || error.message?.includes('session')) {
+        errorMessage += 'Wallet session error.\n\n';
+        errorMessage += '💡 Make sure your wallet app is open and updated.\n';
+        errorMessage += 'Use /invest to reconnect.';
+      } else {
+        errorMessage += `${error.message || 'Unknown error'}\n\n`;
+        errorMessage += '💡 *What to try:*\n';
+        errorMessage += '• Restart your wallet app\n';
+        errorMessage += '• Use /invest and scan QR code instead\n';
+        errorMessage += '• Check your internet connection';
+      }
+
+      await bot.editMessageText(errorMessage, {
+        chat_id: chatId,
+        message_id: statusMsg.message_id,
+        parse_mode: 'Markdown',
+      });
     }
   } catch (error) {
     console.error('❌ Error waiting for wallet approval:', error);
-    await bot.sendMessage(chatId, 'Connection error. Try /invest again.');
+
+    // If we have a status message, update it; otherwise send new message
+    if (statusMsg) {
+      await bot.editMessageText(
+        '❌ *Connection Error*\n\n' +
+        'Something went wrong during wallet connection.\n\n' +
+        '💡 Use /invest to try again.',
+        {
+          chat_id: chatId,
+          message_id: statusMsg.message_id,
+          parse_mode: 'Markdown',
+        }
+      ).catch(() => {
+        // If edit fails, send new message
+        bot.sendMessage(chatId, '❌ Connection error. Use /invest to try again.');
+      });
+    } else {
+      await bot.sendMessage(chatId, '❌ Connection error. Use /invest to try again.');
+    }
   }
 }
 

@@ -28,8 +28,8 @@
     "sqlite3": "^5.1.7",
     "dotenv": "^16.4.5",
     "viem": "^2.38.5",
-    "@walletconnect/sign-client": "^2.17.2",
-    "@walletconnect/utils": "^2.17.2",
+    "@walletconnect/sign-client": "^2.23.0",
+    "@walletconnect/utils": "^2.23.0",
     "@peculiar/webcrypto": "^1.5.0",
     "qrcode": "^1.5.4"
   },
