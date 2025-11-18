@@ -635,9 +635,10 @@ async function showQRCodeWithRecap(bot, chatId, sessions, pool, amount) {
     const user = await db.getOrCreateUser(chatId);
     const { uri, approval } = await walletconnect.createSession(chatId, pool.chain_id);
 
-    // Store approval promise in session
+    // Store approval promise and URI in session (for copy functionality)
     sessions.set(chatId, {
       ...session,
+      walletConnectUri: uri,
       walletConnectApproval: approval,
     });
 
@@ -653,43 +654,34 @@ async function showQRCodeWithRecap(bot, chatId, sessions, pool, amount) {
     const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma' };
     const chainName = chainNames[pool.chain_id] || pool.chain_id;
 
-    // Send QR code with minimal recap
+    // Send QR code with enhanced instructions
     await bot.sendPhoto(chatId, qrBuffer, {
-      caption: `Depositing *${amount} ${pool.underlying_token}*
-${pool.pool_name} • ${chainName} • ${pool.apy?.toFixed(2) || '—'}% APY
-
-Scan with your wallet to confirm`,
+      caption:
+        `Depositing *${amount} ${pool.underlying_token}*\n` +
+        `${pool.pool_name} • ${chainName} • ${pool.apy?.toFixed(2) || '—'}% APY\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `📱 *To connect your wallet:*\n\n` +
+        `1️⃣ Open your wallet app (MetaMask, Rainbow, Trust, etc.)\n` +
+        `2️⃣ Go to WalletConnect or Scan QR\n` +
+        `3️⃣ Scan the QR code above\n` +
+        `4️⃣ Approve the connection\n\n` +
+        `⏳ Waiting for your approval...`,
       parse_mode: 'Markdown',
     });
 
-    // Deep link buttons with expanded wallet support (2025 best practices)
-    const walletLinks = walletconnect.getAllWalletDeepLinks(uri);
-
+    // Alternative: Copy URI button for users who can't scan
     await bot.sendMessage(
       chatId,
-      `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `📱 *On mobile? Open your wallet:*\n\n` +
-      `Tap your wallet below to connect instantly`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+      `💡 *Can't scan the QR code?*\n\n` +
+      `Tap below to copy the connection URI manually:`,
       {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
+            [{ text: '📋 Copy Connection URI', callback_data: 'invest_copy_uri' }],
             [
-              { text: '🦊 MetaMask', url: walletLinks.metamask },
-              { text: '🌈 Rainbow', url: walletLinks.rainbow },
-            ],
-            [
-              { text: '💼 Trust', url: walletLinks.trust },
-              { text: '🔵 Coinbase', url: walletLinks.coinbase },
-            ],
-            [
-              { text: '🐰 Rabby', url: walletLinks.rabby },
-              { text: '🦄 Zerion', url: walletLinks.zerion },
-            ],
-            [
-              { text: '🔗 Other Wallets', url: walletLinks.walletconnect },
-            ],
-            [
+              { text: '❓ Help', callback_data: 'invest_help' },
               { text: '❌ Cancel', callback_data: 'invest_cancel' },
             ],
           ],
@@ -863,6 +855,87 @@ async function waitForWalletApprovalSilent(bot, chatId, sessions) {
   }
 }
 
+/**
+ * Handle copy URI button - allows users to manually copy WalletConnect URI
+ */
+async function handleCopyUri(bot, query, sessions) {
+  const chatId = query.message.chat.id;
+  const session = sessions.get(chatId);
+
+  if (!session?.walletConnectUri) {
+    await bot.answerCallbackQuery(query.id, {
+      text: '❌ URI expired. Try /invest again.',
+      show_alert: true,
+    });
+    return;
+  }
+
+  // Send URI in code block (easily copyable in Telegram)
+  await bot.sendMessage(
+    chatId,
+    `📋 *Connection URI:*\n\n` +
+    `\`\`\`\n${session.walletConnectUri}\n\`\`\`\n\n` +
+    `👆 *Tap the code above to copy*\n\n` +
+    `Then in your wallet app:\n` +
+    `1. Go to WalletConnect\n` +
+    `2. Tap "Paste from clipboard"\n` +
+    `3. Approve the connection`,
+    { parse_mode: 'Markdown' }
+  );
+
+  await bot.answerCallbackQuery(query.id, {
+    text: '✅ URI ready to copy!',
+  });
+}
+
+/**
+ * Handle help button - show troubleshooting guide
+ */
+async function handleConnectionHelp(bot, query, sessions) {
+  await bot.answerCallbackQuery(query.id);
+
+  const chatId = query.message.chat.id;
+  const session = sessions.get(chatId);
+  const chainName = session?.selectedPool ? getChainName(session.selectedPool.chain_id) : 'the selected chain';
+
+  await bot.sendMessage(
+    chatId,
+    `🆘 *Connection Help*\n\n` +
+    `**Recommended Wallets:**\n` +
+    `• MetaMask (iOS/Android)\n` +
+    `• Rainbow Wallet\n` +
+    `• Trust Wallet\n` +
+    `• Coinbase Wallet\n\n` +
+    `**Troubleshooting:**\n\n` +
+    `1️⃣ *QR code won't scan:*\n` +
+    `   → Use "Copy URI" button instead\n` +
+    `   → Make sure your camera has permission\n\n` +
+    `2️⃣ *Connection times out:*\n` +
+    `   → Check your internet connection\n` +
+    `   → Try restarting your wallet app\n` +
+    `   → Use /invest to generate new QR\n\n` +
+    `3️⃣ *Wallet doesn't support chain:*\n` +
+    `   → Make sure your wallet supports ${chainName}\n` +
+    `   → Try adding the network manually\n\n` +
+    `Still having issues? Contact support.`,
+    { parse_mode: 'Markdown' }
+  );
+}
+
+/**
+ * Helper function to get chain name from chain ID
+ */
+function getChainName(chainId) {
+  const chainNames = {
+    1: 'Ethereum Mainnet',
+    42161: 'Arbitrum One',
+    10: 'Optimism',
+    146: 'Sonic',
+    9745: 'Plasma',
+  };
+  return chainNames[chainId] || `Chain ${chainId}`;
+}
+
 module.exports = {
   handleInvestCommand,
   handleGoalSelection,
@@ -872,4 +945,6 @@ module.exports = {
   executeDeposit,
   executeDepositSilent,
   showQRCodeWithRecap,
+  handleCopyUri,
+  handleConnectionHelp,
 };

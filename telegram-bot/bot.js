@@ -837,6 +837,18 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
+    // Handle copy URI button
+    if (data === 'invest_copy_uri') {
+      await investCommands.handleCopyUri(bot, query, sessions);
+      return;
+    }
+
+    // Handle help button
+    if (data === 'invest_help') {
+      await investCommands.handleConnectionHelp(bot, query, sessions);
+      return;
+    }
+
     // Cancel invest flow
     if (data === 'invest_cancel') {
       sessions.delete(chatId);

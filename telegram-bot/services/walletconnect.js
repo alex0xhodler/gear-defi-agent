@@ -371,73 +371,6 @@ async function hasActiveSession(chatId) {
 }
 
 /**
- * Get WalletConnect deep link for mobile wallets (2025 Best Practices)
- * @param {string} uri - WalletConnect URI
- * @param {string} walletApp - Wallet app name (metamask, rainbow, trust, etc.)
- * @returns {string} Deep link URL
- *
- * IMPORTANT: Telegram Bot API only supports http:// and https:// protocols in inline keyboard buttons.
- * Custom URL schemes (metamask://, trust://, etc.) are NOT supported and will cause errors.
- * Therefore, we MUST use universal links (https://) for all wallets.
- *
- * Implementation Strategy:
- * - Universal links (https://) work cross-platform (iOS, Android, Desktop)
- * - Open installed wallet app automatically on mobile when available
- * - Redirect to App Store/Play Store if app not installed (graceful fallback)
- * - All formats tested and verified against official wallet documentation (2025)
- *
- * Sources:
- * - MetaMask: https://docs.metamask.io/sdk/guides/use-deeplinks/
- * - Reown (WalletConnect): https://docs.reown.com/walletkit/android/mobile-linking
- * - Trust Wallet: https://developer.trustwallet.com/developer/develop-for-trust/wallet-connect
- * - Rainbow: https://learn.rainbow.me/connect-to-rainbow-with-walletconnect
- * - Coinbase Wallet: https://docs.cloud.coinbase.com/wallet-sdk/docs/mobile-setup
- * - Telegram Bot API: https://core.telegram.org/bots/api#inlinekeyboardbutton (URL protocol restrictions)
- */
-function getDeepLink(uri, walletApp = 'metamask') {
-  const encodedUri = encodeURIComponent(uri);
-
-  const deepLinks = {
-    // Universal links - Compatible with Telegram Bot API and work cross-platform
-    metamask: `https://metamask.app.link/wc?uri=${encodedUri}`,
-    trust: `https://link.trustwallet.com/wc?uri=${encodedUri}`,
-    rainbow: `https://rnbwapp.com/wc?uri=${encodedUri}`,
-    coinbase: `https://go.cb-w.com/wc?uri=${encodedUri}`,
-    zerion: `https://wallet.zerion.io/wc?uri=${encodedUri}`,
-    uniswap: `https://uniswap.org/app/wc?uri=${encodedUri}`,
-
-    // Desktop/Extension wallets (universal links)
-    rabby: `https://rabby.io/wc?uri=${encodedUri}`,
-    argent: `https://argent.link/app/wc?uri=${encodedUri}`,
-    imtoken: `https://imtoken.me/wc?uri=${encodedUri}`,
-
-    // Generic WalletConnect modal for any wallet (fallback)
-    walletconnect: `https://web3modal.com/wc?uri=${encodedUri}`,
-  };
-
-  return deepLinks[walletApp] || deepLinks.metamask;
-}
-
-/**
- * Get all wallet deeplinks for UI button generation
- * Returns an object with wallet names as keys and deeplink URLs as values
- * @param {string} uri - WalletConnect URI
- * @returns {Object} Object containing all wallet deeplinks
- */
-function getAllWalletDeepLinks(uri) {
-  return {
-    metamask: getDeepLink(uri, 'metamask'),
-    rainbow: getDeepLink(uri, 'rainbow'),
-    trust: getDeepLink(uri, 'trust'),
-    coinbase: getDeepLink(uri, 'coinbase'),
-    rabby: getDeepLink(uri, 'rabby'),
-    zerion: getDeepLink(uri, 'zerion'),
-    uniswap: getDeepLink(uri, 'uniswap'),
-    walletconnect: getDeepLink(uri, 'walletconnect'),
-  };
-}
-
-/**
  * Clean up expired sessions
  * Should be run periodically (e.g., every hour)
  */
@@ -469,8 +402,6 @@ module.exports = {
   disconnectSession,
   sendTransaction,
   hasActiveSession,
-  getDeepLink,
-  getAllWalletDeepLinks,
   cleanupExpiredSessions,
   getSignClient,
 };
