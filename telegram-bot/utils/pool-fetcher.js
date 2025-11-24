@@ -8,6 +8,24 @@ const { GearboxSDK } = require('@gearbox-protocol/sdk');
 const { createPublicClient, http, defineChain, formatUnits } = require('viem');
 const config = require('../config');
 
+// Log SDK exports for debugging (helps verify what's available)
+try {
+  const sdkExports = require('@gearbox-protocol/sdk');
+  const exportKeys = Object.keys(sdkExports);
+  console.log(`📦 Gearbox SDK v11.6.3 exports: ${exportKeys.slice(0, 10).join(', ')}${exportKeys.length > 10 ? '...' : ''}`);
+
+  // Check if SUPPORTED_NETWORKS is available
+  if (sdkExports.SUPPORTED_NETWORKS) {
+    const networks = Object.keys(sdkExports.SUPPORTED_NETWORKS);
+    console.log(`   Supported networks in SDK: ${networks.join(', ')}`);
+    if (sdkExports.SUPPORTED_NETWORKS[143]) {
+      console.log(`   ✅ Monad (143) found in SDK with isPublic: ${sdkExports.SUPPORTED_NETWORKS[143].isPublic}`);
+    }
+  }
+} catch (diagError) {
+  // Diagnostic logging failed, continue silently
+}
+
 // Cache SDK instances per chain
 const sdkCache = new Map();
 
@@ -109,6 +127,25 @@ async function getSDKForChain(chainId, chainConfig) {
   try {
     console.log(`   🔄 Initializing Gearbox SDK for chain ${chainId}...`);
 
+    // Override Monad network configuration to mark as public
+    // Monad pools will be deployed soon, so we need SDK to treat it as supported
+    if (chainId === 143) {
+      try {
+        const { SUPPORTED_NETWORKS } = require('@gearbox-protocol/sdk');
+        if (SUPPORTED_NETWORKS && SUPPORTED_NETWORKS[143]) {
+          // Override isPublic flag to allow SDK initialization
+          SUPPORTED_NETWORKS[143] = {
+            ...SUPPORTED_NETWORKS[143],
+            isPublic: true
+          };
+          console.log(`   🔧 Monad configured as public network (isPublic override)`);
+        }
+      } catch (overrideError) {
+        // SUPPORTED_NETWORKS may not be exported, continue without override
+        console.log(`   ℹ️  Could not override Monad config (${overrideError.message})`);
+      }
+    }
+
     // Use longer timeout for Ethereum mainnet (more complex queries)
     const timeout = chainId === 1 ? 300_000 : 120_000; // 5 min for mainnet, 2 min for others
 
@@ -123,6 +160,14 @@ async function getSDKForChain(chainId, chainConfig) {
 
     return sdk;
   } catch (error) {
+    // Special handling for Monad "Unsupported network" error
+    if (chainId === 143 && error.message?.includes('Unsupported network')) {
+      console.log(`   ℹ️  Monad SDK not yet supported (isPublic: false in SDK v11.6.3)`);
+      console.log(`   ℹ️  Waiting for Gearbox to officially deploy pools on Monad`);
+      console.log(`   ℹ️  Bot will automatically detect pools once deployed`);
+      return null;
+    }
+
     console.error(`   ❌ Failed to initialize SDK for chain ${chainId}:`, error.message);
 
     // Only use fallback for Ethereum if it's a gas limit issue with public RPC
