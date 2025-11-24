@@ -8,11 +8,14 @@ const { GearboxSDK } = require('@gearbox-protocol/sdk');
 const { createPublicClient, http, defineChain, formatUnits } = require('viem');
 const config = require('../config');
 
+// Confirm module is loaded
+console.log('🔧 pool-fetcher.js loaded - Monad override will be attempted during SDK init');
+
 // Log SDK exports for debugging (helps verify what's available)
 try {
   const sdkExports = require('@gearbox-protocol/sdk');
   const exportKeys = Object.keys(sdkExports);
-  console.log(`📦 Gearbox SDK v11.6.3 exports: ${exportKeys.slice(0, 10).join(', ')}${exportKeys.length > 10 ? '...' : ''}`);
+  console.log(`📦 Gearbox SDK v11.6.4 exports: ${exportKeys.slice(0, 10).join(', ')}${exportKeys.length > 10 ? '...' : ''}`);
 
   // Check if SUPPORTED_NETWORKS is available
   if (sdkExports.SUPPORTED_NETWORKS) {
@@ -21,9 +24,12 @@ try {
     if (sdkExports.SUPPORTED_NETWORKS[143]) {
       console.log(`   ✅ Monad (143) found in SDK with isPublic: ${sdkExports.SUPPORTED_NETWORKS[143].isPublic}`);
     }
+  } else {
+    console.log('   ⚠️  SUPPORTED_NETWORKS not exported by SDK (will try override in getSDKForChain)');
   }
 } catch (diagError) {
-  // Diagnostic logging failed, continue silently
+  console.error('⚠️  SDK diagnostic logging failed:', diagError.message);
+  console.error('    This is OK - continuing with Monad override during SDK initialization');
 }
 
 // Cache SDK instances per chain
@@ -162,9 +168,10 @@ async function getSDKForChain(chainId, chainConfig) {
   } catch (error) {
     // Special handling for Monad "Unsupported network" error
     if (chainId === 143 && error.message?.includes('Unsupported network')) {
-      console.log(`   ℹ️  Monad SDK not yet supported (isPublic: false in SDK v11.6.3)`);
+      console.log(`   ℹ️  Monad SDK not yet supported (isPublic: false in SDK v11.6.4)`);
       console.log(`   ℹ️  Waiting for Gearbox to officially deploy pools on Monad`);
       console.log(`   ℹ️  Bot will automatically detect pools once deployed`);
+      console.log(`   ℹ️  Override attempt may have failed - check logs above`);
       return null;
     }
 
