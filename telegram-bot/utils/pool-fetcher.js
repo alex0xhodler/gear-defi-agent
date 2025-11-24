@@ -19,20 +19,30 @@ try {
 
   // Check SUPPORTED_NETWORKS array
   if (Array.isArray(sdkExports.SUPPORTED_NETWORKS)) {
-    const monadIndex = sdkExports.SUPPORTED_NETWORKS.indexOf('Monad');
-    console.log(`   SUPPORTED_NETWORKS array (${sdkExports.SUPPORTED_NETWORKS.length} networks): ${sdkExports.SUPPORTED_NETWORKS.join(', ')}`);
-    console.log(`   Monad found at array index: ${monadIndex}`);
+    console.log(`   SUPPORTED_NETWORKS array (${sdkExports.SUPPORTED_NETWORKS.length}): ${sdkExports.SUPPORTED_NETWORKS.join(', ')}`);
   }
 
-  // Check chains object (THE IMPORTANT ONE for isPublic flag)
-  if (sdkExports.chains && sdkExports.chains.Monad) {
-    const monad = sdkExports.chains.Monad;
-    console.log(`   ✅ Monad (chain ${monad.id}) configuration found:`);
-    console.log(`      - isPublic: ${monad.isPublic}`);
-    console.log(`      - Curators: ${Object.keys(monad.defaultMarketConfigurators || {}).length}`);
-    console.log(`      - Well-known token: ${monad.wellKnownToken?.symbol || 'N/A'}`);
-  } else {
-    console.log('   ⚠️  Monad chain config NOT found in SDK chains object');
+  // List ALL chains in SDK with their IDs
+  if (sdkExports.chains) {
+    const chainList = Object.keys(sdkExports.chains).map(key => {
+      const chain = sdkExports.chains[key];
+      return `${key}:${chain.id}`;
+    }).join(', ');
+    console.log(`   All chain configs: ${chainList}`);
+  }
+
+  // Find Monad MAINNET by chain ID 143 (not by name "Monad")
+  if (sdkExports.chains) {
+    const monadMainnet = Object.values(sdkExports.chains).find(c => c.id === 143);
+    if (monadMainnet) {
+      console.log(`   ✅ Monad MAINNET (143) found:`);
+      console.log(`      - Network key: ${monadMainnet.network}`);
+      console.log(`      - isPublic: ${monadMainnet.isPublic}`);
+      console.log(`      - Curators: ${Object.keys(monadMainnet.defaultMarketConfigurators || {}).length}`);
+      console.log(`      - Well-known token: ${monadMainnet.wellKnownToken?.symbol || 'N/A'}`);
+    } else {
+      console.log('   ⚠️  Monad mainnet (143) NOT found in SDK - only testnet (10143) exists');
+    }
   }
 } catch (diagError) {
   console.error('⚠️  SDK diagnostic logging failed:', diagError.message);
@@ -140,25 +150,28 @@ async function getSDKForChain(chainId, chainConfig) {
   try {
     console.log(`   🔄 Initializing Gearbox SDK for chain ${chainId}...`);
 
-    // Verify and override Monad network configuration if needed
-    // Monad pools will be deployed soon, so ensure SDK treats it as supported
+    // Verify and override Monad MAINNET network configuration if needed
+    // Find by chain ID 143, not by name (SDK has both testnet and mainnet)
     if (chainId === 143) {
       try {
-        const { chains, isPublicNetwork } = require('@gearbox-protocol/sdk');
+        const { chains } = require('@gearbox-protocol/sdk');
 
-        // Check current isPublic status
-        const isAlreadyPublic = isPublicNetwork ? isPublicNetwork(143) : false;
-        console.log(`   📊 Monad isPublic check: ${isAlreadyPublic}`);
+        // Find Monad mainnet by chain ID 143 (not by name "Monad" which is testnet)
+        const monadMainnet = Object.values(chains).find(c => c.id === 143);
 
-        if (!isAlreadyPublic && chains && chains.Monad) {
-          // Apply override if not public
-          const wasPublic = chains.Monad.isPublic;
-          chains.Monad.isPublic = true;
-          console.log(`   🔧 Monad isPublic override: ${wasPublic} → true (forced)`);
-        } else if (isAlreadyPublic) {
-          console.log(`   ✅ Monad already public in SDK v11.6.4 - no override needed`);
+        if (monadMainnet) {
+          const wasPublic = monadMainnet.isPublic;
+          console.log(`   📊 Monad mainnet (143) found - isPublic: ${wasPublic}`);
+
+          if (!wasPublic) {
+            monadMainnet.isPublic = true;
+            console.log(`   🔧 Monad mainnet isPublic override: false → true (forced)`);
+          } else {
+            console.log(`   ✅ Monad mainnet already public - no override needed`);
+          }
         } else {
-          console.log(`   ⚠️  Could not access Monad in chains object`);
+          console.log(`   ⚠️  Monad mainnet (143) NOT found in SDK chains object`);
+          console.log(`   ⚠️  SDK may only have Monad testnet (10143)`);
         }
       } catch (overrideError) {
         console.log(`   ⚠️  Override check failed: ${overrideError.message}`);
