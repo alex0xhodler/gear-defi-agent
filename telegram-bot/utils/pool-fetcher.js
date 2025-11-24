@@ -559,8 +559,8 @@ async function fetchAllPools(minTVL = 0) {
   const allPools = [];
   let chainsScanned = 0;
 
-  // All chains - try SDK for all including Plasma
-  const sdkChains = ['Mainnet', 'Arbitrum', 'Optimism', 'Sonic', 'Plasma'];
+  // All chains - try SDK for all including Plasma and Monad
+  const sdkChains = ['Mainnet', 'Arbitrum', 'Optimism', 'Sonic', 'Plasma', 'Monad'];
 
   for (const chainKey of sdkChains) {
     const chainConfig = config.blockchain.chains[chainKey];

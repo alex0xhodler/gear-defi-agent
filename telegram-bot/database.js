@@ -174,6 +174,20 @@ class Database {
         )
       `);
 
+      // Pool notifications table (for new pool discovery notifications)
+      this.db.run(`
+        CREATE TABLE IF NOT EXISTS pool_notifications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          pool_address TEXT NOT NULL,
+          chain_id INTEGER NOT NULL,
+          mandate_id INTEGER,
+          sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id),
+          FOREIGN KEY (mandate_id) REFERENCES mandates(id)
+        )
+      `);
+
       // Index for faster lookups
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_mandates_active ON mandates(active, signed)`);
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_notifications_recent ON notifications(mandate_id, sent_at)`);
@@ -184,7 +198,8 @@ class Database {
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_apy_notifications_recent ON apy_notifications(position_id, sent_at)`);
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_health_notifications_recent ON health_factor_notifications(position_id, sent_at)`);
       this.db.run(`CREATE INDEX IF NOT EXISTS idx_walletconnect_sessions_user ON walletconnect_sessions(user_id, expires_at)`);
-      this.db.run(`CREATE INDEX IF NOT EXISTS idx_pending_transactions_status ON pending_transactions(status, created_at)`, (err) => {
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_pending_transactions_status ON pending_transactions(status, created_at)`);
+      this.db.run(`CREATE INDEX IF NOT EXISTS idx_pool_notifications_recent ON pool_notifications(pool_address, chain_id, sent_at)`, (err) => {
         if (err) {
           console.error('❌ Error creating indexes:', err.message);
         } else {
@@ -1046,6 +1061,44 @@ class Database {
         function(err) {
           if (err) return reject(err);
           resolve({ id: this.lastID });
+        }
+      );
+    });
+  }
+
+  /**
+   * Check if any Monad pool has been discovered before
+   * @param {number} chainId - Monad chain ID (143)
+   * @returns {Promise<boolean>} True if Monad pool exists in notifications
+   */
+  hasMonadPoolBeenDiscovered(chainId = 143) {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        `SELECT id FROM pool_notifications
+         WHERE chain_id = ?
+         LIMIT 1`,
+        [chainId],
+        (err, row) => {
+          if (err) return reject(err);
+          resolve(!!row);
+        }
+      );
+    });
+  }
+
+  /**
+   * Get all active users for broadcasting announcements
+   * @returns {Promise<Array>} All users with telegram_chat_id
+   */
+  getAllActiveUsers() {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        `SELECT id, telegram_chat_id, telegram_username
+         FROM users
+         ORDER BY created_at DESC`,
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
         }
       );
     });

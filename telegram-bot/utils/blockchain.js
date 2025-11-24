@@ -1,7 +1,7 @@
 /**
  * Blockchain utilities for interacting with Gearbox pools
  * Real balance checking using viem for all supported chains:
- * Ethereum, Arbitrum, Optimism, Sonic, and Plasma
+ * Ethereum, Arbitrum, Optimism, Sonic, Plasma, and Monad
  */
 
 const { createPublicClient, http, parseUnits, formatUnits } = require('viem');
@@ -60,6 +60,32 @@ const sonicChain = {
   },
 };
 
+// Custom Monad chain configuration
+const monadChain = {
+  id: 143,
+  name: 'Monad',
+  network: 'monad',
+  nativeCurrency: {
+    name: 'Monad',
+    symbol: 'MON',
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: [config.blockchain.chains.Monad.rpcUrl],
+    },
+    public: {
+      http: [config.blockchain.chains.Monad.rpcUrl],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: 'MonadVision',
+      url: config.blockchain.chains.Monad.explorerUrl,
+    },
+  },
+};
+
 // Create viem clients for each chain
 const clients = {
   1: createPublicClient({
@@ -102,11 +128,19 @@ const clients = {
       retryDelay: config.blockchain.rpc.retryDelayMs,
     }),
   }),
+  143: createPublicClient({
+    chain: monadChain,
+    transport: http(config.blockchain.chains.Monad.rpcUrl, {
+      timeout: config.blockchain.rpc.timeoutMs,
+      retryCount: config.blockchain.rpc.maxRetries,
+      retryDelay: config.blockchain.rpc.retryDelayMs,
+    }),
+  }),
 };
 
 /**
  * Get public client for a specific chain
- * @param {number} chainId - Chain ID (1=Ethereum, 42161=Arbitrum, 10=Optimism, 146=Sonic, 9745=Plasma)
+ * @param {number} chainId - Chain ID (1=Ethereum, 42161=Arbitrum, 10=Optimism, 146=Sonic, 9745=Plasma, 143=Monad)
  * @returns {Object} Viem public client
  */
 function getClient(chainId) {

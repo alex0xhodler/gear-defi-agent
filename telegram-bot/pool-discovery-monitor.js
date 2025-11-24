@@ -5,11 +5,12 @@
  * when pools matching their mandate criteria are discovered.
  *
  * Features:
- * - Discovers pools across Ethereum, Arbitrum, Optimism, Sonic, and Plasma
+ * - Discovers pools across Ethereum, Arbitrum, Optimism, Sonic, Plasma, and Monad
  * - Tracks new/removed pools in database cache
  * - Matches new pools against active mandates
  * - Sends Telegram notifications to matching users
  * - Prevents notification spam with 24h cooldown
+ * - Special broadcast for first Monad pool discovery
  */
 
 const poolFetcher = require('./utils/pool-fetcher');
@@ -150,6 +151,18 @@ async function scanPools(bot) {
  */
 async function notifyUsersAboutNewPools(bot, newPools) {
   try {
+    // Check if this is the first Monad pool ever discovered
+    const monadPools = newPools.filter(pool => pool.chainId === 143);
+    if (monadPools.length > 0) {
+      const hasMonadPoolBefore = await database.hasMonadPoolBeenDiscovered(143);
+
+      if (!hasMonadPoolBefore) {
+        console.log('   🎉 FIRST MONAD POOL DETECTED! Broadcasting to all users...\n');
+        await broadcastMonadLaunch(bot, monadPools[0]);
+        // Continue with normal mandate matching for other pools
+      }
+    }
+
     // Get all active mandates
     const mandates = await database.getActiveMandates();
 
@@ -221,6 +234,85 @@ async function notifyUsersAboutNewPools(bot, newPools) {
 
   } catch (error) {
     console.error('❌ Error notifying users:', error);
+  }
+}
+
+/**
+ * Broadcast Monad launch announcement to ALL users
+ * This is a special one-time announcement for the first Monad pool
+ */
+async function broadcastMonadLaunch(bot, pool) {
+  try {
+    // Get all active users
+    const users = await database.getAllActiveUsers();
+
+    if (users.length === 0) {
+      console.log('   ℹ️  No users to broadcast to');
+      return;
+    }
+
+    console.log(`   📢 Broadcasting Monad launch to ${users.length} users...\n`);
+
+    const message = `🎉 *MAJOR LAUNCH: Gearbox Protocol on Monad!*
+
+The first Gearbox lending pool is now live on Monad mainnet!
+
+🏦 *Pool:* ${pool.name}
+💰 *APY:* ${pool.apy.toFixed(2)}%
+📊 *TVL:* $${formatNumber(pool.tvl)}
+⚡ *Chain:* Monad (Chain ID: 143)
+🪙 *Asset:* ${pool.underlyingToken}
+
+💎 *Why Monad?*
+• Ultra-fast execution (~400ms blocks)
+• Low transaction costs
+• EVM-compatible DeFi yield
+
+Start earning on the newest high-performance blockchain!`;
+
+    let broadcastsSent = 0;
+    let broadcastsFailed = 0;
+
+    for (const user of users) {
+      try {
+        await bot.sendMessage(user.telegram_chat_id, message, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🚀 View Pool Details', callback_data: `pool_${pool.address}_${pool.chainId}` },
+              ],
+              [
+                { text: '📊 Pool Analytics', url: `${config.blockchain.chains.Monad.explorerUrl}/address/${pool.address}` },
+                { text: '🔔 Create Alert', callback_data: `alert_${pool.address}_${pool.chainId}` },
+              ],
+            ],
+          },
+        });
+
+        // Log this as a special broadcast (no mandate_id)
+        await database.logPoolNotification(
+          user.id,
+          pool.address,
+          pool.chainId,
+          null // No mandate - this is a broadcast
+        );
+
+        broadcastsSent++;
+
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+      } catch (error) {
+        console.error(`   ❌ Failed to broadcast to user ${user.telegram_chat_id}:`, error.message);
+        broadcastsFailed++;
+      }
+    }
+
+    console.log(`   ✅ Monad launch broadcast: ${broadcastsSent} sent, ${broadcastsFailed} failed\n`);
+
+  } catch (error) {
+    console.error('❌ Error broadcasting Monad launch:', error);
   }
 }
 

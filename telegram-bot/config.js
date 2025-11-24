@@ -97,6 +97,12 @@ module.exports = {
         rpcUrl: process.env.PLASMA_RPC_URL || 'https://rpc.plasma.to',
         explorerUrl: 'https://plasmascan.to',
       },
+      Monad: {
+        id: 143,
+        name: 'Monad',
+        rpcUrl: process.env.MONAD_RPC_URL || 'https://rpc.monad.xyz',
+        explorerUrl: 'https://monadvision.com',
+      },
     },
 
     // Retry configuration for RPC calls
