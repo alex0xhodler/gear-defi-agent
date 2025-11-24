@@ -181,8 +181,18 @@ async function getSDKForChain(chainId, chainConfig) {
     // Use longer timeout for Ethereum mainnet (more complex queries)
     const timeout = chainId === 1 ? 300_000 : 120_000; // 5 min for mainnet, 2 min for others
 
+    // For Monad, let SDK use its default RPC (Gearbox proxy) to avoid gas limit issues
+    // The SDK has a configured proxy that handles Monad-specific gas estimation
+    const rpcConfig = chainId === 143
+      ? {} // Use SDK default RPC for Monad
+      : { rpcURLs: [chainConfig.rpcUrl] };
+
+    if (chainId === 143) {
+      console.log(`   🌐 Using SDK default RPC for Monad (avoids gas limit issues)`);
+    }
+
     const sdk = await GearboxSDK.attach({
-      rpcURLs: [chainConfig.rpcUrl],
+      ...rpcConfig,
       timeout,
       ignoreUpdateablePrices: true, // Skip RedStone price feed updates
     });
