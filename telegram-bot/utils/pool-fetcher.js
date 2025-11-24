@@ -17,15 +17,22 @@ try {
   const exportKeys = Object.keys(sdkExports);
   console.log(`📦 Gearbox SDK v11.6.4 exports: ${exportKeys.slice(0, 10).join(', ')}${exportKeys.length > 10 ? '...' : ''}`);
 
-  // Check if SUPPORTED_NETWORKS is available
-  if (sdkExports.SUPPORTED_NETWORKS) {
-    const networks = Object.keys(sdkExports.SUPPORTED_NETWORKS);
-    console.log(`   Supported networks in SDK: ${networks.join(', ')}`);
-    if (sdkExports.SUPPORTED_NETWORKS[143]) {
-      console.log(`   ✅ Monad (143) found in SDK with isPublic: ${sdkExports.SUPPORTED_NETWORKS[143].isPublic}`);
-    }
+  // Check SUPPORTED_NETWORKS array
+  if (Array.isArray(sdkExports.SUPPORTED_NETWORKS)) {
+    const monadIndex = sdkExports.SUPPORTED_NETWORKS.indexOf('Monad');
+    console.log(`   SUPPORTED_NETWORKS array (${sdkExports.SUPPORTED_NETWORKS.length} networks): ${sdkExports.SUPPORTED_NETWORKS.join(', ')}`);
+    console.log(`   Monad found at array index: ${monadIndex}`);
+  }
+
+  // Check chains object (THE IMPORTANT ONE for isPublic flag)
+  if (sdkExports.chains && sdkExports.chains.Monad) {
+    const monad = sdkExports.chains.Monad;
+    console.log(`   ✅ Monad (chain ${monad.id}) configuration found:`);
+    console.log(`      - isPublic: ${monad.isPublic}`);
+    console.log(`      - Curators: ${Object.keys(monad.defaultMarketConfigurators || {}).length}`);
+    console.log(`      - Well-known token: ${monad.wellKnownToken?.symbol || 'N/A'}`);
   } else {
-    console.log('   ⚠️  SUPPORTED_NETWORKS not exported by SDK (will try override in getSDKForChain)');
+    console.log('   ⚠️  Monad chain config NOT found in SDK chains object');
   }
 } catch (diagError) {
   console.error('⚠️  SDK diagnostic logging failed:', diagError.message);
@@ -133,22 +140,28 @@ async function getSDKForChain(chainId, chainConfig) {
   try {
     console.log(`   🔄 Initializing Gearbox SDK for chain ${chainId}...`);
 
-    // Override Monad network configuration to mark as public
-    // Monad pools will be deployed soon, so we need SDK to treat it as supported
+    // Verify and override Monad network configuration if needed
+    // Monad pools will be deployed soon, so ensure SDK treats it as supported
     if (chainId === 143) {
       try {
-        const { SUPPORTED_NETWORKS } = require('@gearbox-protocol/sdk');
-        if (SUPPORTED_NETWORKS && SUPPORTED_NETWORKS[143]) {
-          // Override isPublic flag to allow SDK initialization
-          SUPPORTED_NETWORKS[143] = {
-            ...SUPPORTED_NETWORKS[143],
-            isPublic: true
-          };
-          console.log(`   🔧 Monad configured as public network (isPublic override)`);
+        const { chains, isPublicNetwork } = require('@gearbox-protocol/sdk');
+
+        // Check current isPublic status
+        const isAlreadyPublic = isPublicNetwork ? isPublicNetwork(143) : false;
+        console.log(`   📊 Monad isPublic check: ${isAlreadyPublic}`);
+
+        if (!isAlreadyPublic && chains && chains.Monad) {
+          // Apply override if not public
+          const wasPublic = chains.Monad.isPublic;
+          chains.Monad.isPublic = true;
+          console.log(`   🔧 Monad isPublic override: ${wasPublic} → true (forced)`);
+        } else if (isAlreadyPublic) {
+          console.log(`   ✅ Monad already public in SDK v11.6.4 - no override needed`);
+        } else {
+          console.log(`   ⚠️  Could not access Monad in chains object`);
         }
       } catch (overrideError) {
-        // SUPPORTED_NETWORKS may not be exported, continue without override
-        console.log(`   ℹ️  Could not override Monad config (${overrideError.message})`);
+        console.log(`   ⚠️  Override check failed: ${overrideError.message}`);
       }
     }
 
@@ -168,10 +181,11 @@ async function getSDKForChain(chainId, chainConfig) {
   } catch (error) {
     // Special handling for Monad "Unsupported network" error
     if (chainId === 143 && error.message?.includes('Unsupported network')) {
-      console.log(`   ℹ️  Monad SDK not yet supported (isPublic: false in SDK v11.6.4)`);
-      console.log(`   ℹ️  Waiting for Gearbox to officially deploy pools on Monad`);
-      console.log(`   ℹ️  Bot will automatically detect pools once deployed`);
-      console.log(`   ℹ️  Override attempt may have failed - check logs above`);
+      console.log(`   ⚠️  SDK initialization failed for Monad despite configuration`);
+      console.log(`   ⚠️  Error: ${error.message}`);
+      console.log(`   ℹ️  Check startup logs above for Monad isPublic status`);
+      console.log(`   ℹ️  If isPublic: true, SDK may require deployed contracts before initialization`);
+      console.log(`   ℹ️  Bot will automatically detect pools once Gearbox deploys to Monad`);
       return null;
     }
 
