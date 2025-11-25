@@ -239,10 +239,13 @@ async function notifyAPYChange(position, oldAPY, newAPY, changePercent, isMajor)
     const sign = newAPY > oldAPY ? '+' : '';
     const urgency = isMajor ? '🚨 MAJOR APY CHANGE' : '📊 APY Update';
 
+    const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma', 143: 'Monad' };
+    const chainName = chainNames[position.chain_id] || `Chain ${position.chain_id}`;
+
     const message = `${urgency}\n\n` +
       `${direction} **${position.underlying_token} Position**\n` +
       `Pool: ${position.pool_address.slice(0, 10)}...${position.pool_address.slice(-8)}\n` +
-      `Chain: ${position.chain_id === 1 ? 'Ethereum' : 'Plasma'}\n\n` +
+      `Chain: ${chainName}\n\n` +
       `Old APY: ${oldAPY.toFixed(2)}%\n` +
       `New APY: ${newAPY.toFixed(2)}%\n` +
       `Change: ${sign}${(newAPY - oldAPY).toFixed(2)}% (${changePercent.toFixed(2)}%)\n\n` +
@@ -277,10 +280,13 @@ async function notifyPositionClosed(position) {
     const pnlPercent = (pnl / position.deposited_amount) * 100;
     const pnlEmoji = pnl >= 0 ? '📈' : '📉';
 
+    const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma', 143: 'Monad' };
+    const chainName = chainNames[position.chain_id] || `Chain ${position.chain_id}`;
+
     const message = `✅ **Position Closed**\n\n` +
       `${position.underlying_token} position has been closed\n\n` +
       `Pool: ${position.pool_address.slice(0, 10)}...${position.pool_address.slice(-8)}\n` +
-      `Chain: ${position.chain_id === 1 ? 'Ethereum' : 'Plasma'}\n\n` +
+      `Chain: ${chainName}\n\n` +
       `Deposited: ${position.deposited_amount.toFixed(2)} ${position.underlying_token}\n` +
       `Final Value: ${position.current_value?.toFixed(2) || 'N/A'} ${position.underlying_token}\n\n` +
       `${pnlEmoji} PnL: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ${position.underlying_token} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%)`;

@@ -74,7 +74,7 @@ async function handlePositionsCommand(bot, msg) {
     message += `───────────────────\n\n`;
 
     positions.forEach((pos, index) => {
-      const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma' };
+      const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma', 143: 'Monad' };
       const chainName = chainNames[pos.chain_id] || `Chain ${pos.chain_id}`;
       const pnl = (pos.current_value || 0) - (pos.deposited_amount || 0);
       const pnlPercent = (pnl / pos.deposited_amount) * 100;
@@ -154,7 +154,8 @@ async function handleViewPosition(bot, callbackQuery) {
     const trend = await db.getAPYTrend(position.pool_address, position.chain_id, 7);
 
     // Format detailed message
-    const chainName = position.chain_id === 1 ? 'Ethereum' : 'Plasma';
+    const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma', 143: 'Monad' };
+    const chainName = chainNames[position.chain_id] || `Chain ${position.chain_id}`;
     const pnl = (position.current_value || 0) - (position.deposited_amount || 0);
     const pnlPercent = (pnl / position.deposited_amount) * 100;
     const apyChange = (position.current_supply_apy || position.initial_supply_apy) - position.initial_supply_apy;
@@ -258,8 +259,11 @@ async function handleViewHistory(bot, callbackQuery) {
     // Get APY history
     const history = await db.getAPYHistory(position.pool_address, position.chain_id, 30);
 
+    const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma', 143: 'Monad' };
+    const chainName = chainNames[position.chain_id] || `Chain ${position.chain_id}`;
+
     let message = `📈 **APY History**\n\n`;
-    message += `${position.underlying_token} on ${position.chain_id === 1 ? 'Ethereum' : 'Plasma'}\n\n`;
+    message += `${position.underlying_token} on ${chainName}\n\n`;
 
     if (history.length === 0) {
       message += 'No historical data available yet.\n';

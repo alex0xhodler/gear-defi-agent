@@ -289,7 +289,7 @@ async function executeDeposit(bot, chatId, sessions) {
     const poolChainId = `eip155:${pool.chain_id}`;
 
     if (!sessionChains.includes(poolChainId)) {
-      const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma' };
+      const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma', 143: 'Monad' };
       const chainName = chainNames[pool.chain_id] || `Chain ${pool.chain_id}`;
 
       // Try to add the chain to wallet automatically
@@ -463,7 +463,7 @@ async function executeDepositSilent(bot, chatId, sessions) {
     const poolChainId = `eip155:${pool.chain_id}`;
 
     if (!sessionChains.includes(poolChainId)) {
-      const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma' };
+      const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma', 143: 'Monad' };
       const chainName = chainNames[pool.chain_id] || pool.chain_id;
 
       await bot.sendMessage(chatId, `Your wallet doesn't support ${chainName}. Add it and try again.`);
@@ -651,7 +651,7 @@ async function showQRCodeWithRecap(bot, chatId, sessions, pool, amount) {
       margin: 2,
     });
 
-    const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma' };
+    const chainNames = { 1: 'Ethereum', 42161: 'Arbitrum', 10: 'Optimism', 146: 'Sonic', 9745: 'Plasma', 143: 'Monad' };
     const chainName = chainNames[pool.chain_id] || pool.chain_id;
 
     // Send QR code with enhanced instructions
@@ -932,6 +932,7 @@ function getChainName(chainId) {
     10: 'Optimism',
     146: 'Sonic',
     9745: 'Plasma',
+    143: 'Monad',
   };
   return chainNames[chainId] || `Chain ${chainId}`;
 }
