@@ -241,6 +241,13 @@ async function getPoolsFromSDK(chainKey, chainConfig) {
 
     const pools = [];
 
+    // Safety check for markets array (may be undefined for newly added chains)
+    if (!sdk.marketRegister || !sdk.marketRegister.markets || !Array.isArray(sdk.marketRegister.markets)) {
+      console.log(`   ℹ️  ${chainKey}: SDK initialized but no markets array available`);
+      console.log(`   ℹ️  This is expected for chains without deployed pools yet`);
+      return [];
+    }
+
     // Iterate through all markets
     for (const market of sdk.marketRegister.markets) {
       const poolData = market.pool?.pool;
