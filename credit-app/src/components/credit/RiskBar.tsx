@@ -11,7 +11,7 @@ type RiskLevel = 'safe' | 'moderate' | 'danger' | 'critical';
 function getRiskLevel(hf: number): RiskLevel {
   if (hf >= 1.5) return 'safe';
   if (hf >= 1.2) return 'moderate';
-  if (hf >= 1.05) return 'danger';
+  if (hf >= 1.10) return 'danger';
   return 'critical';
 }
 
@@ -64,7 +64,7 @@ export function RiskBar({ healthFactor, liquidationThreshold = 1.0 }: RiskBarPro
   const percentage = ((clampedHF - minHF) / (maxHF - minHF)) * 100;
 
   // Zone boundaries
-  const dangerZone = ((1.05 - minHF) / (maxHF - minHF)) * 100;
+  const dangerZone = ((1.10 - minHF) / (maxHF - minHF)) * 100;
   const moderateZone = ((1.2 - minHF) / (maxHF - minHF)) * 100;
   const safeZone = ((1.5 - minHF) / (maxHF - minHF)) * 100;
 

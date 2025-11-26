@@ -5,6 +5,7 @@ import path from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  base: '/credit/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -17,5 +18,8 @@ export default defineConfig({
   },
   css: {
     postcss: './postcss.config.js',
+  },
+  build: {
+    outDir: 'dist',
   },
 })

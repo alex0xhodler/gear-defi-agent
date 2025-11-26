@@ -13,6 +13,8 @@ interface CollateralInputProps {
   balance?: string;
   usdValue?: number;
   disabled?: boolean;
+  minPositionLabel?: string;
+  minPositionValue?: string; // Value to set when clicking min label
 }
 
 export function CollateralInput({
@@ -23,6 +25,8 @@ export function CollateralInput({
   balance = '0',
   usdValue = 0,
   disabled = false,
+  minPositionLabel,
+  minPositionValue,
 }: CollateralInputProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -64,13 +68,28 @@ export function CollateralInput({
       {/* Header row */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-text-tertiary text-sm">Deposit</span>
-        <button
-          onClick={handleMaxClick}
-          className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-accent transition-colors"
-        >
-          <Wallet className="w-4 h-4" />
-          <span>Bal: {parseFloat(balance).toFixed(4)}</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {minPositionLabel && (
+            <button
+              onClick={() => {
+                if (minPositionValue) {
+                  onAmountChange(minPositionValue);
+                  inputRef.current?.focus();
+                }
+              }}
+              className="text-xs text-text-muted hover:text-text-secondary transition-colors"
+            >
+              {minPositionLabel}
+            </button>
+          )}
+          <button
+            onClick={handleMaxClick}
+            className="flex items-center gap-1.5 text-sm text-text-secondary hover:text-accent transition-colors"
+          >
+            <Wallet className="w-4 h-4" />
+            <span>Bal: {parseFloat(balance).toFixed(4)}</span>
+          </button>
+        </div>
       </div>
 
       {/* Input row */}
