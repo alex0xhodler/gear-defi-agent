@@ -115,7 +115,7 @@ module.exports = {
 
   // Gearbox Pools - Dynamically loaded from on-chain
   // This will be populated by pool-fetcher at runtime
-  // Fallback pools for Plasma (used until first refresh)
+  // Fallback pools for Plasma and Monad (direct contract calls)
   pools: {
     Mainnet: [],
     Plasma: [
@@ -134,6 +134,26 @@ module.exports = {
       {
         address: '0xb74760fd26400030620027dd29d19d74d514700e',
         name: 'Hyperithm',
+        token: 'USDT0',
+        decimals: 6,
+      },
+    ],
+    Monad: [
+      {
+        address: '0x6b343f7b797f1488aa48c49d540690f2b2c89751',
+        name: 'USDC by Edge UltraYield',
+        token: 'USDC',
+        decimals: 6,
+      },
+      {
+        address: '0x164a35f31e4e0f6c45d500962a6978d2cbd5a16b',
+        name: 'USDT0 by Edge UltraYield',
+        token: 'USDT0',
+        decimals: 6,
+      },
+      {
+        address: '0x34752948b0dc28969485df2066ffe86d5dc36689',
+        name: 'USDT0 by Tulipa',
         token: 'USDT0',
         decimals: 6,
       },

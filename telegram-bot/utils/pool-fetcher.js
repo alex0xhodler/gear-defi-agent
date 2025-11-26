@@ -228,6 +228,11 @@ async function getSDKForChain(chainId, chainConfig) {
  */
 async function getPoolsFromSDK(chainKey, chainConfig) {
   try {
+    // Use direct contract calls for Monad (bypass SDK complexity)
+    if (chainConfig.id === 143) {
+      return await getMonadPoolsFallback(chainKey, chainConfig);
+    }
+
     const sdk = await getSDKForChain(chainConfig.id, chainConfig);
 
     if (!sdk) {
@@ -509,6 +514,68 @@ async function getEthereumPoolsFallback(chainKey, chainConfig) {
 
   } catch (error) {
     console.error(`   ❌ ${chainKey}: Fallback discovery failed - ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Fetch Monad pools using direct contract calls (SDK fallback)
+ * Uses hardcoded pool addresses from config + direct viem calls
+ */
+async function getMonadPoolsFallback(chainKey, chainConfig) {
+  try {
+    console.log(`   📋 Using direct contract calls for Monad pools`);
+
+    const monadPools = config.pools.Monad || [];
+    if (monadPools.length === 0) {
+      console.log(`   ⚠️  No Monad pools configured in config.js`);
+      return [];
+    }
+
+    const client = createPublicClient({
+      chain: { id: 143, name: 'Monad', network: 'monad', nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 }, rpcUrls: { default: { http: [chainConfig.rpcUrl] } } },
+      transport: http(chainConfig.rpcUrl)
+    });
+
+    const pools = [];
+
+    for (const poolConfig of monadPools) {
+      try {
+        const [asset, totalAssets, supplyRate] = await Promise.all([
+          client.readContract({ address: poolConfig.address, abi: POOL_ABI, functionName: 'asset', gas: 100_000n }).catch(() => null),
+          client.readContract({ address: poolConfig.address, abi: POOL_ABI, functionName: 'totalAssets', gas: 100_000n }).catch(() => 0n),
+          client.readContract({ address: poolConfig.address, abi: POOL_ABI, functionName: 'supplyRate', gas: 100_000n }).catch(() => 0n),
+        ]);
+
+        const tvl = Number(formatUnits(totalAssets, poolConfig.decimals));
+        const RAY = BigInt('1000000000000000000000000000');
+        const apy = Number((BigInt(supplyRate) * BigInt(10000)) / RAY) / 100;
+
+        pools.push({
+          address: poolConfig.address,
+          name: poolConfig.name,
+          symbol: `d${poolConfig.token}`,
+          chainId: chainConfig.id,
+          chainKey,
+          underlyingToken: poolConfig.token,
+          tokenAddress: asset,
+          decimals: poolConfig.decimals,
+          tvl,
+          apy,
+          asset,
+          chainName: chainConfig.name,
+        });
+
+        console.log(`     💎 ${poolConfig.name}: $${tvl.toFixed(2)} TVL, ${apy.toFixed(2)}% APY`);
+      } catch (error) {
+        console.log(`     ⏭️  Skipped ${poolConfig.name}: ${error.message}`);
+      }
+    }
+
+    console.log(`   ✅ Monad: Found ${pools.length} pools via fallback`);
+    return pools;
+  } catch (error) {
+    console.error(`   ❌ Monad: Fallback discovery failed - ${error.message}`);
     return [];
   }
 }
