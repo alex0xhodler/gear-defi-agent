@@ -1,5 +1,5 @@
 {
-  "buildCommand": "tsc",
+  "buildCommand": "tsc && cd credit-app && npm install && npm run build",
   "outputDirectory": ".",
   "functions": {
     "api/chat.ts": {
@@ -11,5 +11,15 @@
       "maxDuration": 30
     }
   },
+  "rewrites": [
+    {
+      "source": "/credit",
+      "destination": "/credit-app/dist/index.html"
+    },
+    {
+      "source": "/credit/(.*)",
+      "destination": "/credit-app/dist/$1"
+    }
+  ],
   "public": true
 }

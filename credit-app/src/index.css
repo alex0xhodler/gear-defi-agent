@@ -1,0 +1,675 @@
+@import "tailwindcss";
+
+/* ============================================
+   0x.credit Premium Theme - "Midnight Gold"
+   Classic luxury finance with Plus Jakarta Sans
+   ============================================ */
+
+@theme {
+  /* Background - Deep midnight navy */
+  --color-bg-base: #0A1628;
+  --color-bg-elevated: #0F1D32;
+  --color-bg-surface: #152238;
+
+  /* Premium Gold Accent */
+  --color-accent: #D4AF37;
+  --color-accent-light: #E8C872;
+  --color-accent-dark: #B8962E;
+  --color-accent-muted: #9A7B2A;
+  --color-accent-glow: rgba(212, 175, 55, 0.3);
+
+  /* Secondary - Warm champagne for highlights */
+  --color-champagne: #F5E6C8;
+  --color-champagne-muted: #D9CDB3;
+
+  /* Text - Warm ivory whites */
+  --color-text-primary: rgba(255, 252, 245, 0.95);
+  --color-text-secondary: rgba(255, 252, 245, 0.72);
+  --color-text-tertiary: rgba(255, 252, 245, 0.48);
+  --color-text-muted: rgba(255, 252, 245, 0.24);
+
+  /* Glass - Navy tinted with warm edge */
+  --color-glass-bg: rgba(15, 29, 50, 0.88);
+  --color-glass-border: rgba(212, 175, 55, 0.12);
+  --color-glass-border-light: rgba(212, 175, 55, 0.2);
+  --color-glass-inner-glow: rgba(212, 175, 55, 0.06);
+
+  /* Risk colors - Refined for navy background */
+  --color-risk-low: #4ADE80;
+  --color-risk-medium: #FBBF24;
+  --color-risk-high: #FB7185;
+
+  /* Shadows - Warm with navy depth */
+  --shadow-premium:
+    0 0 0 1px rgba(212, 175, 55, 0.06) inset,
+    0 1px 0 0 rgba(255, 252, 245, 0.04) inset,
+    0 24px 48px -12px rgba(0, 0, 0, 0.6),
+    0 0 100px -30px var(--color-accent-glow);
+  --shadow-glow: 0 0 40px var(--color-accent-glow);
+  --shadow-soft: 0 8px 32px -8px rgba(0, 0, 0, 0.5);
+
+  /* Blur */
+  --blur-glass: 32px;
+
+  /* Border radius */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+}
+
+/* ============================================
+   Base Styles & Typography
+   ============================================ */
+
+:root {
+  /* Font family - Plus Jakarta Sans throughout */
+  --font-display: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+
+  font-family: var(--font-body);
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-base);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'ss01' 1, 'ss02' 1, 'cv01' 1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--color-bg-base);
+  overflow-x: hidden;
+}
+
+/* ============================================
+   Animated Gradient Background
+   ============================================ */
+
+.mesh-gradient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(21, 34, 56, 0.8), transparent);
+}
+
+.mesh-gradient::before,
+.mesh-gradient::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  will-change: transform;
+}
+
+.mesh-gradient::before {
+  width: 50vmax;
+  height: 50vmax;
+  background: radial-gradient(circle, rgba(212, 175, 55, 0.08) 0%, transparent 70%);
+  top: -25%;
+  left: -15%;
+  animation: ambient-float 30s ease-in-out infinite;
+}
+
+.mesh-gradient::after {
+  width: 45vmax;
+  height: 45vmax;
+  background: radial-gradient(circle, rgba(184, 150, 46, 0.06) 0%, transparent 70%);
+  bottom: -30%;
+  right: -20%;
+  animation: ambient-float 35s ease-in-out infinite reverse;
+}
+
+@keyframes ambient-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(30px, -20px) scale(1.08);
+    opacity: 0.8;
+  }
+}
+
+/* ============================================
+   Subtle Noise Texture
+   ============================================ */
+
+.grain-overlay::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  opacity: 0.018;
+  pointer-events: none;
+  z-index: 1000;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+}
+
+/* ============================================
+   Premium Glass Panels
+   ============================================ */
+
+.glass-panel {
+  background: linear-gradient(
+    165deg,
+    rgba(15, 29, 50, 0.92) 0%,
+    rgba(10, 22, 40, 0.85) 100%
+  );
+  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
+  border: 1px solid var(--color-glass-border);
+  border-radius: var(--radius-3xl);
+  box-shadow: var(--shadow-premium);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Top highlight edge */
+.glass-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    165deg,
+    rgba(212, 175, 55, 0.15) 0%,
+    rgba(212, 175, 55, 0.03) 30%,
+    transparent 60%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.glass-panel-sm {
+  background: linear-gradient(
+    165deg,
+    rgba(15, 29, 50, 0.88) 0%,
+    rgba(10, 22, 40, 0.78) 100%
+  );
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+  border: 1px solid var(--color-glass-border);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-soft);
+  position: relative;
+}
+
+.glass-panel-sm::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    165deg,
+    rgba(212, 175, 55, 0.1) 0%,
+    transparent 40%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Inner panel for nested content */
+.glass-inner {
+  background: rgba(10, 22, 40, 0.5);
+  border: 1px solid rgba(212, 175, 55, 0.06);
+  border-radius: var(--radius-xl);
+}
+
+/* ============================================
+   Typography Classes - Plus Jakarta Sans
+   ============================================ */
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* Hero numbers - Bold, tight tracking for impact */
+.text-hero {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 3.75rem;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.text-hero-sm {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 2.25rem;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+/* KPI numbers - Medium weight with tight tracking */
+.text-kpi {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.75rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.text-kpi-sm {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.25rem;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+/* Input numbers - Large, light for elegance */
+.text-input {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 2.5rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* Gradient text - Gold shimmer */
+.text-gradient {
+  background: linear-gradient(
+    135deg,
+    var(--color-accent-light) 0%,
+    var(--color-accent) 45%,
+    var(--color-accent-dark) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-subtle {
+  background: linear-gradient(
+    135deg,
+    var(--color-champagne) 0%,
+    var(--color-accent-light) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Label styling - Refined uppercase */
+.text-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.text-label-gold {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+/* ============================================
+   Premium Button Styles
+   ============================================ */
+
+.btn-premium {
+  position: relative;
+  background: linear-gradient(
+    135deg,
+    var(--color-accent) 0%,
+    var(--color-accent-dark) 100%
+  );
+  border: none;
+  border-radius: var(--radius-2xl);
+  color: var(--color-bg-base);
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-premium::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.25) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  transition: transform 0.7s ease;
+}
+
+.btn-premium:hover::before {
+  transform: translateX(100%);
+}
+
+.btn-premium:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 16px 48px -8px var(--color-accent-glow),
+    0 0 0 1px rgba(212, 175, 55, 0.3) inset;
+}
+
+.btn-premium:active {
+  transform: translateY(-1px);
+}
+
+/* Secondary button - Ghost with gold border */
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--color-glass-border);
+  border-radius: var(--radius-xl);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  transition: all 0.25s ease;
+}
+
+.btn-secondary:hover {
+  background: rgba(212, 175, 55, 0.08);
+  border-color: var(--color-glass-border-light);
+  color: var(--color-accent-light);
+}
+
+/* ============================================
+   Premium Input Styles
+   ============================================ */
+
+.input-premium {
+  background: rgba(10, 22, 40, 0.6);
+  border: 1px solid var(--color-glass-border);
+  border-radius: var(--radius-xl);
+  color: var(--color-text-primary);
+  font-family: var(--font-display);
+  font-weight: 500;
+  transition: all 0.25s ease;
+}
+
+.input-premium:focus {
+  outline: none;
+  border-color: var(--color-accent-muted);
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15);
+  background: rgba(10, 22, 40, 0.8);
+}
+
+.input-premium::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ============================================
+   Focus & Accessibility
+   ============================================ */
+
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   Scrollbar Styling
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.25);
+}
+
+/* ============================================
+   Animation Keyframes
+   ============================================ */
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 24px var(--color-accent-glow);
+  }
+  50% {
+    box-shadow: 0 0 48px var(--color-accent-glow), 0 0 72px rgba(212, 175, 55, 0.15);
+  }
+}
+
+@keyframes gold-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-blur {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-bottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Animation utility classes */
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  animation: gold-shimmer 2.5s ease infinite;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(212, 175, 55, 0.1) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-fade-in-blur {
+  animation: fade-in-blur 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Stagger delays */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
+
+/* ============================================
+   Premium Hover States
+   ============================================ */
+
+.hover-lift {
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 48px -12px rgba(0, 0, 0, 0.4);
+}
+
+.hover-glow {
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 40px var(--color-accent-glow);
+}
+
+.hover-scale {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hover-scale:hover {
+  transform: scale(1.02);
+}
+
+/* ============================================
+   Risk Indicator Styles
+   ============================================ */
+
+.risk-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.risk-low {
+  background: rgba(74, 222, 128, 0.1);
+  color: var(--color-risk-low);
+  border: 1px solid rgba(74, 222, 128, 0.2);
+}
+
+.risk-medium {
+  background: rgba(251, 191, 36, 0.1);
+  color: var(--color-risk-medium);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+.risk-high {
+  background: rgba(251, 113, 133, 0.1);
+  color: var(--color-risk-high);
+  border: 1px solid rgba(251, 113, 133, 0.2);
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+
+.border-gradient {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--color-bg-surface), var(--color-bg-surface)) padding-box,
+    linear-gradient(165deg, var(--color-accent-muted), transparent 60%) border-box;
+}
+
+.glow-accent {
+  box-shadow: 0 0 48px -12px var(--color-accent-glow);
+}
+
+/* Divider with gold fade */
+.divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--color-glass-border) 25%,
+    var(--color-glass-border) 75%,
+    transparent 100%
+  );
+}
+
+/* Selection styling */
+::selection {
+  background: var(--color-accent);
+  color: var(--color-bg-base);
+}
+
+/* Gold accent underline */
+.underline-gold {
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 2px;
+}
+
+/* Mono numbers for tabular data */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
