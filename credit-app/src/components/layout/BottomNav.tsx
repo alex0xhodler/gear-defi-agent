@@ -17,40 +17,69 @@ const tabs = [
 
 export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pt-2">
+    <motion.nav
+      className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pt-2"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: 'spring', stiffness: 100, damping: 20, delay: 0.2 }}
+    >
       <div className="max-w-lg mx-auto">
-        <div className="glass-panel-sm px-2 py-2 flex items-center justify-around">
+        <div className="glass-panel-sm px-3 py-2.5 flex items-center justify-around">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
 
             return (
-              <button
+              <motion.button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
                 className={`
-                  relative flex flex-col items-center gap-1 px-4 py-2 rounded-xl
-                  transition-all duration-200
+                  relative flex flex-col items-center gap-1.5 px-4 py-2 rounded-xl
+                  transition-colors duration-200
                   ${isActive
                     ? 'text-accent'
                     : 'text-text-tertiary hover:text-text-secondary'
                   }
                 `}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
               >
+                {/* Active background indicator */}
                 {isActive && (
                   <motion.div
                     layoutId="activeTab"
-                    className="absolute inset-0 bg-accent/10 rounded-xl"
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                    className="absolute inset-0 bg-accent/10 rounded-xl border border-accent/20"
+                    transition={{ type: 'spring', stiffness: 500, damping: 35 }}
                   />
                 )}
-                <Icon className="w-5 h-5 relative z-10" />
-                <span className="text-xs font-medium relative z-10">{tab.label}</span>
-              </button>
+
+                {/* Icon with animation */}
+                <motion.div
+                  animate={isActive ? { scale: 1.1 } : { scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                >
+                  <Icon className="w-5 h-5 relative z-10" strokeWidth={isActive ? 2.5 : 2} />
+                </motion.div>
+
+                {/* Label */}
+                <span className={`text-[10px] font-semibold tracking-wide uppercase relative z-10 ${isActive ? 'text-accent' : ''}`}>
+                  {tab.label}
+                </span>
+
+                {/* Active glow effect */}
+                {isActive && (
+                  <motion.div
+                    className="absolute -bottom-1 left-1/2 w-8 h-1 bg-accent rounded-full blur-sm"
+                    initial={{ opacity: 0, x: '-50%' }}
+                    animate={{ opacity: 0.6, x: '-50%' }}
+                    transition={{ duration: 0.2 }}
+                  />
+                )}
+              </motion.button>
             );
           })}
         </div>
       </div>
-    </nav>
+    </motion.nav>
   );
 }

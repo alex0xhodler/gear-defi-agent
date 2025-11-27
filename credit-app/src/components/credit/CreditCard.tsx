@@ -3,6 +3,7 @@ import { useAccount, useBalance } from 'wagmi';
 import { useModal } from 'connectkit';
 import { formatUnits } from 'viem';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Sparkles, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 
 import { GlassPanel } from '../common/GlassPanel';
 import { CollateralInput } from './CollateralInput';
@@ -13,26 +14,47 @@ import { type TransactionState } from './ActionButton';
 import { type Token, SUPPORTED_TOKENS } from '../../config/tokens';
 import { usePositionCalculation, useETHPlusStrategy, useOpenPosition, useETHPrice, useETHPlusAPY, useETHPlusRatio } from '../../hooks/useGearbox';
 
-// Minimum total position requirement (Gearbox minDebt)
 const MIN_POSITION_ETH = 2;
 
-// Default values for ETH+ strategy
 const DEFAULT_DATA = {
-  ethPrice: 3500, // Will be fetched from price oracle
-  ethPlusAPY: 3.5, // ETH+ base yield from Reserve Protocol
-  wethBorrowRate: 2.0, // Will be fetched from pool
+  ethPrice: 3500,
+  ethPlusAPY: 3.5,
+  wethBorrowRate: 2.0,
   liquidationThreshold: 0.85,
-  maxLeverage: 1000, // Default 10x max (will be capped by HF)
-  // Max leverage for HF >= 1.10 with LTV 0.93: 1.10 / (1.10 - 0.93) = 6.47x
+  maxLeverage: 1000,
   maxLeverageForSafeHF: 647,
 };
 
+// Animation variants for staggered entrance
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.1,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 16, filter: 'blur(8px)' },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: 'blur(0px)',
+    transition: {
+      type: 'spring' as const,
+      stiffness: 100,
+      damping: 15,
+    },
+  },
+};
 
 export function CreditCard() {
   const { address, isConnected } = useAccount();
   const { setOpen } = useModal();
 
-  // State
   const [selectedToken, setSelectedToken] = useState<Token>(SUPPORTED_TOKENS.ETH);
   const [amount, setAmount] = useState('');
   const [strategy, setStrategy] = useState<StrategyType>('apy_optimized');
@@ -40,30 +62,23 @@ export function CreditCard() {
   const [txState, setTxState] = useState<TransactionState>('idle');
   const [errorMessage, setErrorMessage] = useState<string>();
 
-  // Get leverage from strategy or custom
   const leverage = strategy === 'custom' ? customLeverage : STRATEGIES[strategy].leverage;
 
-  // Get user balance
   const { data: balance } = useBalance({
     address,
     token: selectedToken.isNative ? undefined : selectedToken.address,
   });
 
-  // Fetch real-time data from SDK and APIs
   const { data: strategyData } = useETHPlusStrategy();
   const { data: ethPrice } = useETHPrice();
   const { data: ethPlusAPY } = useETHPlusAPY();
   const { data: ethPlusRatio } = useETHPlusRatio();
 
-  // Use real data with fallbacks
   const currentEthPrice = ethPrice ?? DEFAULT_DATA.ethPrice;
   const borrowRate = strategyData?.pool.borrowAPY ?? DEFAULT_DATA.wethBorrowRate;
   const baseAPY = ethPlusAPY ?? strategyData?.ethPlusAPY ?? DEFAULT_DATA.ethPlusAPY;
-
-  // Get max leverage from SDK, capped at HF >= 1.05
   const maxLeverage = strategyData?.maxLeverageForSafeHF ?? DEFAULT_DATA.maxLeverageForSafeHF;
 
-  // Calculate position metrics using the hook
   const depositAmount = parseFloat(amount) || 0;
   const calculations = usePositionCalculation(
     depositAmount,
@@ -73,15 +88,12 @@ export function CreditCard() {
     borrowRate
   );
 
-  // Transaction hook
   const openPositionMutation = useOpenPosition();
 
-  // Handle token change
   const handleTokenChange = (token: Token) => {
     setSelectedToken(token);
   };
 
-  // Handle strategy change
   const handleStrategyChange = (newStrategy: StrategyType) => {
     setStrategy(newStrategy);
     if (newStrategy !== 'custom') {
@@ -89,7 +101,6 @@ export function CreditCard() {
     }
   };
 
-  // Handle transaction execution
   const handleExecute = async () => {
     if (!isConnected || calculations.depositAmount <= 0) return;
 
@@ -98,7 +109,6 @@ export function CreditCard() {
     try {
       setTxState('approving');
 
-      // Execute the real transaction
       await openPositionMutation.mutateAsync({
         depositAmount: amount,
         leverage,
@@ -117,19 +127,14 @@ export function CreditCard() {
     }
   };
 
-  // Format balance for display
   const formattedBalance = balance
     ? formatUnits(balance.value, balance.decimals)
     : '0';
 
-  // Check if user has sufficient balance
   const userBalance = balance ? parseFloat(formatUnits(balance.value, balance.decimals)) : 0;
   const hasSufficientBalance = depositAmount <= userBalance;
-
-  // Check minimum position requirement
   const meetsMinPosition = calculations.totalPosition >= MIN_POSITION_ETH;
 
-  // Check if can execute
   const canExecute = isConnected &&
     depositAmount > 0 &&
     hasSufficientBalance &&
@@ -138,7 +143,6 @@ export function CreditCard() {
     txState === 'idle' &&
     !openPositionMutation.isPending;
 
-  // Determine button error message
   const getButtonError = () => {
     if (!isConnected) return null;
     if (depositAmount <= 0) return 'Enter amount';
@@ -152,15 +156,26 @@ export function CreditCard() {
   const isLoading = txState !== 'idle' && txState !== 'success' && txState !== 'error';
 
   return (
-    <div className="space-y-4 w-full max-w-md mx-auto">
-      {/* Quick Credit Card */}
-      <GlassPanel className="p-5 relative overflow-hidden">
-        <div className="relative space-y-5">
+    <motion.div
+      className="space-y-5 w-full max-w-md mx-auto"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+    >
+      {/* Main Credit Card */}
+      <GlassPanel className="p-6 relative overflow-hidden" animate={false}>
+        <motion.div className="relative space-y-6" variants={containerVariants}>
           {/* Header */}
-          <h2 className="text-xl font-semibold text-text-primary">Open Credit</h2>
+          <motion.div variants={itemVariants} className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-text-primary tracking-tight">Open Credit</h2>
+            <div className="flex items-center gap-2 text-accent">
+              <Sparkles className="w-4 h-4" />
+              <span className="text-[11px] font-semibold tracking-wide uppercase">ETH+ Strategy</span>
+            </div>
+          </motion.div>
 
           {/* Collateral Input */}
-          <div className="space-y-2">
+          <motion.div variants={itemVariants} className="space-y-2">
             <CollateralInput
               token={selectedToken}
               amount={amount}
@@ -172,33 +187,41 @@ export function CreditCard() {
               minPositionLabel={`Min: ${MIN_POSITION_ETH} ETH`}
               minPositionValue={String(MIN_POSITION_ETH)}
             />
-            {/* Position size warning */}
-            {depositAmount > 0 && !meetsMinPosition && (
-              <p className="text-xs text-risk-high flex items-center gap-1">
-                <span>⚠</span>
-                Total position ({calculations.totalPosition.toFixed(1)} ETH) below {MIN_POSITION_ETH} ETH minimum
-              </p>
-            )}
-          </div>
+            <AnimatePresence>
+              {depositAmount > 0 && !meetsMinPosition && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="flex items-center gap-1.5 text-xs text-risk-high px-1"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Total position ({calculations.totalPosition.toFixed(1)} ETH) below {MIN_POSITION_ETH} ETH minimum</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
 
           {/* Strategy Selector */}
-          <StrategySelector
-            selected={strategy}
-            onSelect={handleStrategyChange}
-            disabled={txState !== 'idle'}
-            baseAPY={baseAPY}
-            borrowRate={borrowRate}
-            maxLeverage={maxLeverage}
-          />
+          <motion.div variants={itemVariants}>
+            <StrategySelector
+              selected={strategy}
+              onSelect={handleStrategyChange}
+              disabled={txState !== 'idle'}
+              baseAPY={baseAPY}
+              borrowRate={borrowRate}
+              maxLeverage={maxLeverage}
+            />
+          </motion.div>
 
-          {/* Custom Leverage Slider (only shown when custom is selected) */}
+          {/* Custom Leverage Slider */}
           <AnimatePresence>
             {strategy === 'custom' && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.2 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 25 }}
               >
                 <LeverageSlider
                   value={Math.min(customLeverage, maxLeverage)}
@@ -209,16 +232,17 @@ export function CreditCard() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </motion.div>
       </GlassPanel>
 
       {/* Position Preview Card */}
       <AnimatePresence>
         {depositAmount > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 100, damping: 20 }}
           >
             <PositionPreview
               netAPY={calculations.netAPY}
@@ -237,56 +261,80 @@ export function CreditCard() {
         )}
       </AnimatePresence>
 
-      {/* CTA Button */}
-      <motion.button
-        onClick={isConnected ? handleExecute : () => setOpen(true)}
-        disabled={isConnected && !canExecute}
-        className={`
-          w-full py-4 rounded-2xl font-semibold text-lg text-white
-          transition-all duration-200 shadow-lg
-          ${!isConnected
-            ? 'bg-gradient-to-r from-accent to-cyan-500 hover:from-accent-light hover:to-cyan-400'
-            : canExecute
-            ? 'bg-gradient-to-r from-accent to-cyan-500 hover:from-accent-light hover:to-cyan-400'
-            : 'bg-white/10 cursor-not-allowed opacity-50'
-          }
-        `}
-        whileTap={canExecute || !isConnected ? { scale: 0.98 } : {}}
-      >
-        {isLoading ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            {txState === 'approving' && 'Approving...'}
-            {txState === 'opening' && 'Opening Account...'}
-            {txState === 'leveraging' && 'Applying Leverage...'}
+      {/* Premium CTA Button */}
+      <motion.div variants={itemVariants}>
+        <motion.button
+          onClick={isConnected ? handleExecute : () => setOpen(true)}
+          disabled={isConnected && !canExecute}
+          className={`
+            relative w-full py-4 rounded-2xl font-bold text-base overflow-hidden
+            transition-all duration-300 tracking-tight
+            ${!isConnected || canExecute
+              ? 'bg-gradient-to-r from-accent-light via-accent to-accent-dark text-bg-base shadow-lg'
+              : 'bg-bg-surface/60 text-text-muted cursor-not-allowed border border-glass-border'
+            }
+          `}
+          whileHover={(!isConnected || canExecute) ? { scale: 1.01, y: -3 } : {}}
+          whileTap={(!isConnected || canExecute) ? { scale: 0.99 } : {}}
+        >
+          {/* Shimmer effect on enabled button */}
+          {(!isConnected || canExecute) && txState === 'idle' && (
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent"
+              initial={{ x: '-100%' }}
+              animate={{ x: '100%' }}
+              transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 4 }}
+            />
+          )}
+
+          {/* Glow effect */}
+          {(!isConnected || canExecute) && (
+            <div className="absolute inset-0 rounded-2xl bg-accent/15 blur-2xl -z-10" aria-hidden="true" />
+          )}
+
+          <span className="relative z-10 flex items-center justify-center gap-2.5">
+            {isLoading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span className="font-semibold">
+                  {txState === 'approving' && 'Approving...'}
+                  {txState === 'opening' && 'Opening Account...'}
+                  {txState === 'leveraging' && 'Applying Leverage...'}
+                </span>
+              </>
+            ) : txState === 'success' ? (
+              <>
+                <CheckCircle2 className="w-5 h-5" />
+                <span className="font-semibold">Success!</span>
+              </>
+            ) : !isConnected ? (
+              <span className="font-bold">Connect Wallet</span>
+            ) : buttonError ? (
+              <span className="font-semibold">{buttonError}</span>
+            ) : (
+              <>
+                <Sparkles className="w-5 h-5" />
+                <span>Start Earning <span className="font-extrabold">~{calculations.netAPY.toFixed(0)}%</span> APY</span>
+              </>
+            )}
           </span>
-        ) : txState === 'success' ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="text-xl">✓</span>
-            Success!
-          </span>
-        ) : !isConnected ? (
-          'Connect Wallet'
-        ) : buttonError ? (
-          buttonError
-        ) : (
-          `Confirm & Start Earning ~${calculations.netAPY.toFixed(0)}% APY`
-        )}
-      </motion.button>
+        </motion.button>
+      </motion.div>
 
       {/* Error message */}
       <AnimatePresence>
         {txState === 'error' && errorMessage && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="p-3 rounded-xl bg-risk-high/10 text-risk-high text-sm text-center"
+            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.98 }}
+            className="flex items-center gap-2 p-4 rounded-xl bg-risk-high/10 border border-risk-high/20 text-risk-high text-sm"
           >
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
             {errorMessage}
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }

@@ -7,11 +7,10 @@ export type StrategyType = 'conservative' | 'apy_optimized' | 'custom';
 interface StrategyConfig {
   id: StrategyType;
   label: string;
-  leverage: number; // 100 = 1x, 400 = 4x
+  leverage: number;
   riskLevel: 'Low' | 'Medium' | 'High';
 }
 
-// Base strategy configurations (without APY - calculated dynamically)
 const STRATEGY_CONFIGS: Record<StrategyType, StrategyConfig> = {
   conservative: {
     id: 'conservative',
@@ -33,7 +32,6 @@ const STRATEGY_CONFIGS: Record<StrategyType, StrategyConfig> = {
   },
 };
 
-// Export for use in CreditCard
 export const STRATEGIES = STRATEGY_CONFIGS;
 
 export interface Strategy extends StrategyConfig {
@@ -45,9 +43,9 @@ interface StrategySelectorProps {
   selected: StrategyType;
   onSelect: (strategy: StrategyType) => void;
   disabled?: boolean;
-  baseAPY?: number; // ETH+ base APY
-  borrowRate?: number; // WETH borrow rate
-  maxLeverage?: number; // Max leverage allowed
+  baseAPY?: number;
+  borrowRate?: number;
+  maxLeverage?: number;
 }
 
 export function StrategySelector({
@@ -60,13 +58,11 @@ export function StrategySelector({
 }: StrategySelectorProps) {
   const strategyOptions: StrategyType[] = ['conservative', 'apy_optimized', 'custom'];
 
-  // Calculate real APY for each strategy
   const strategiesWithAPY = useMemo(() => {
     const result: Record<StrategyType, Strategy> = {} as Record<StrategyType, Strategy>;
 
     for (const [key, config] of Object.entries(STRATEGY_CONFIGS)) {
       const strategyType = key as StrategyType;
-      // Cap leverage at maxLeverage
       const effectiveLeverage = Math.min(config.leverage, maxLeverage);
       const netAPY = calculateNetAPY(baseAPY, borrowRate, effectiveLeverage);
       const leverageDisplay = (effectiveLeverage / 100).toFixed(1);
@@ -90,45 +86,78 @@ export function StrategySelector({
   }, [baseAPY, borrowRate, maxLeverage]);
 
   return (
-    <div className={`space-y-3 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+    <div className={`space-y-4 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
       {/* Toggle buttons */}
-      <div className="flex rounded-2xl bg-white/5 p-1">
+      <div className="flex rounded-2xl bg-bg-surface/60 p-1.5 border border-glass-border">
         {strategyOptions.map((strategyId) => {
           const strategy = strategiesWithAPY[strategyId];
           const isSelected = selected === strategyId;
 
           return (
-            <button
+            <motion.button
               key={strategyId}
               onClick={() => onSelect(strategyId)}
               className={`
-                relative flex-1 py-3 px-2 rounded-xl text-sm font-medium
+                relative flex-1 py-3 px-3 rounded-xl text-sm font-medium
                 transition-colors duration-200
-                ${isSelected ? 'text-white' : 'text-text-tertiary hover:text-text-secondary'}
+                ${isSelected ? 'text-bg-base' : 'text-text-tertiary hover:text-text-secondary'}
               `}
+              whileTap={{ scale: 0.98 }}
             >
               {isSelected && (
                 <motion.div
                   layoutId="strategyIndicator"
-                  className="absolute inset-0 rounded-xl bg-gradient-to-r from-accent to-cyan-500"
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                />
+                  className="absolute inset-0 rounded-xl bg-gradient-to-r from-accent via-accent to-accent-dark shadow-lg"
+                  transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                >
+                  {/* Shimmer effect */}
+                  <div className="absolute inset-0 rounded-xl overflow-hidden">
+                    <motion.div
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                      initial={{ x: '-100%' }}
+                      animate={{ x: '100%' }}
+                      transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 3 }}
+                    />
+                  </div>
+                </motion.div>
               )}
-              <span className="relative z-10">{strategy.label}</span>
-            </button>
+              <span className="relative z-10 font-semibold">{strategy.label}</span>
+            </motion.button>
           );
         })}
       </div>
 
-      {/* Description */}
-      <motion.p
+      {/* Description with animation */}
+      <motion.div
         key={selected}
-        initial={{ opacity: 0, y: -5 }}
+        initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-sm text-text-secondary text-center"
+        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+        className="text-center"
       >
-        {strategiesWithAPY[selected].description}
-      </motion.p>
+        <p className="text-sm text-text-secondary">
+          {strategiesWithAPY[selected].description}
+        </p>
+        {selected !== 'custom' && (
+          <motion.div
+            className="mt-2 flex items-center justify-center gap-2"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 }}
+          >
+            <span className={`risk-indicator ${
+              strategiesWithAPY[selected].riskLevel === 'Low' ? 'risk-low' :
+              strategiesWithAPY[selected].riskLevel === 'Medium' ? 'risk-medium' : 'risk-high'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                strategiesWithAPY[selected].riskLevel === 'Low' ? 'bg-risk-low' :
+                strategiesWithAPY[selected].riskLevel === 'Medium' ? 'bg-risk-medium' : 'bg-risk-high'
+              }`} />
+              {strategiesWithAPY[selected].riskLevel} Risk
+            </span>
+          </motion.div>
+        )}
+      </motion.div>
     </div>
   );
 }

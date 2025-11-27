@@ -3,27 +3,49 @@ import { motion, type HTMLMotionProps } from 'framer-motion';
 
 interface GlassPanelProps extends Omit<HTMLMotionProps<'div'>, 'children'> {
   children: React.ReactNode;
-  variant?: 'default' | 'sm' | 'subtle';
-  glow?: boolean;
+  variant?: 'default' | 'sm' | 'inner' | 'glow';
+  animate?: boolean;
+  delay?: number;
 }
 
-export const GlassPanel = forwardRef<HTMLDivElement, GlassPanelProps>(
-  ({ children, className = '', variant = 'default', glow = false, ...props }, ref) => {
-    const baseClasses = variant === 'sm'
-      ? 'glass-panel-sm'
-      : variant === 'subtle'
-      ? 'bg-white/5 backdrop-blur-md border border-white/5 rounded-xl'
-      : 'glass-panel';
+const variants = {
+  hidden: {
+    opacity: 0,
+    y: 24,
+    scale: 0.98,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      type: 'spring' as const,
+      stiffness: 100,
+      damping: 20,
+      mass: 1,
+    },
+  },
+};
 
-    const glowClasses = glow ? 'animate-pulse-glow' : '';
+export const GlassPanel = forwardRef<HTMLDivElement, GlassPanelProps>(
+  ({ children, className = '', variant = 'default', animate = true, delay = 0, ...props }, ref) => {
+    const variantClasses = {
+      default: 'glass-panel',
+      sm: 'glass-panel-sm',
+      inner: 'glass-inner',
+      glow: 'glass-panel hover-glow',
+    };
+
+    const baseClasses = variantClasses[variant];
 
     return (
       <motion.div
         ref={ref}
-        className={`${baseClasses} ${glowClasses} ${className}`}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className={`${baseClasses} ${className}`}
+        initial={animate ? 'hidden' : false}
+        animate={animate ? 'visible' : false}
+        variants={variants}
+        transition={{ delay }}
         {...props}
       >
         {children}
